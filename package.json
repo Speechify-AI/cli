@@ -1,0 +1,35 @@
+{
+  "name": "@speechify/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Speechify command-line companion to the developer console — synthesize speech and manage voices from your terminal.",
+  "type": "module",
+  "bin": {
+    "speechify": "./dist/bin.js"
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "biome format --write .",
+    "lint": "biome check .",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@speechify/api": "^2.0.0",
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.1"
+  }
+}
