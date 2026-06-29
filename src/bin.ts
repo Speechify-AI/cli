@@ -1,23 +1,26 @@
 // Entry point. Assembles the commander program (auth, say, voices) and routes all
 // failures through one normalizer so exit codes and the error shape are uniform.
 import { Command } from "commander";
-import { registerAuthCommand } from "./commands/auth.js";
+import { registerAuthCommands } from "./commands/auth.js";
 import { registerSayCommand } from "./commands/say.js";
 import { registerVoicesCommand } from "./commands/voices.js";
+import { registerWorkspaceCommand } from "./commands/workspace.js";
 import { normalizeError } from "./core/errors.js";
 
 function buildProgram(): Command {
   const program = new Command();
   program
     .name("speechify")
-    .description("Speechify command-line companion — synthesize speech and manage voices from your terminal.")
+    .description("Speechify command-line companion to the developer console.")
     .version(__CLI_VERSION__, "-V, --version", "print the CLI version")
     .option("--api-key <key>", "Speechify API key (overrides login / $SPEECHIFY_API_KEY)")
+    .option("--workspace <id>", "act in this workspace for one command (overrides the selected one)")
     .option("--api-version <date>", "pin the Speechify-Version header (ISO date, e.g. 2026-06-27)")
     .option("--base-url <url>", "override the API origin (defaults to $SPEECHIFY_BASE_URL or production)")
     .option("--json", "emit machine-readable JSON on stdout");
 
-  registerAuthCommand(program);
+  registerAuthCommands(program);
+  registerWorkspaceCommand(program);
   registerSayCommand(program);
   registerVoicesCommand(program);
 

@@ -5,6 +5,8 @@ export interface GlobalOptions {
   apiKey?: string;
   apiVersion?: string;
   baseUrl?: string;
+  /** Override the active workspace (X-Tenant-ID) for one command. */
+  workspace?: string;
   json?: boolean;
 }
 

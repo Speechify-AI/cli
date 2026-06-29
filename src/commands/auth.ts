@@ -1,86 +1,141 @@
-// `speechify auth login | logout | status` — manage the stored API key.
+// `speechify login | logout | whoami` — console-user authentication.
 //
-// login validates the key against the API (a cheap GET /v1/voices) before saving,
-// so we never persist a key that doesn't work.
+// Default login is a browser flow (opens the console, captures a Firebase refresh
+// token via a localhost callback). Until the console `/cli/login` page ships, the
+// working path is `speechify login --refresh-token <token>` (with the Firebase web
+// API key via --firebase-api-key or $SPEECHIFY_FB_API_KEY).
 import type { Command } from "commander";
-import { API_KEY_ENV } from "../config.js";
-import { clearConfigFile, configFilePath, readConfigFile, writeConfigFile } from "../configFile.js";
-import { createClient } from "../core/client.js";
-import { CliError, ExitCode, normalizeError } from "../core/errors.js";
-import { promptHidden, readStdin } from "../io.js";
+import { openBrowser } from "../auth/browser.js";
+import { startCallbackServer } from "../auth/callbackServer.js";
+import { exchangeRefreshToken } from "../auth/firebase.js";
+import { resolveAuth } from "../auth/session.js";
+import { clearConfigFile, readConfigFile, writeConfigFile } from "../configFile.js";
+import { CliError, ExitCode } from "../core/errors.js";
+import { createHttpClient } from "../core/http.js";
+import { listWorkspaces } from "../core/workspaces.js";
 import type { GlobalOptions } from "../options.js";
-import { logInfo, maskKey, printJson } from "../output.js";
+import { logInfo, logWarning, maskKey, printJson } from "../output.js";
 
-async function obtainKey(opts: GlobalOptions): Promise<string> {
-  if (opts.apiKey) return opts.apiKey.trim();
-  if (!process.stdin.isTTY) {
-    const piped = (await readStdin()).trim();
-    if (piped) return piped;
-    throw new CliError("No API key provided on stdin.", { exitCode: ExitCode.DATA_ERR, code: "missing_input" });
-  }
-  const entered = (await promptHidden("Speechify API key: ")).trim();
-  if (!entered) throw new CliError("No API key entered.", { exitCode: ExitCode.DATA_ERR, code: "missing_input" });
-  return entered;
+interface LoginOptions extends GlobalOptions {
+  refreshToken?: string;
+  firebaseApiKey?: string;
 }
 
-async function validateKey(key: string, opts: GlobalOptions): Promise<void> {
-  const client = createClient({ apiKey: key, apiVersion: opts.apiVersion, baseUrl: opts.baseUrl });
+interface Session {
+  refreshToken: string;
+  firebaseApiKey: string;
+}
+
+async function browserLogin(): Promise<Session> {
+  const consoleUrl = (process.env.SPEECHIFY_CONSOLE_URL ?? "https://console.speechify.ai").replace(/\/+$/, "");
+  const server = await startCallbackServer();
+  const loginUrl = `${consoleUrl}/cli/login?redirect_uri=${encodeURIComponent(server.redirectUri)}&state=${server.state}`;
+  logInfo("Opening your browser to sign in…");
+  logInfo(loginUrl);
+  openBrowser(loginUrl);
   try {
-    await client.voices.list();
+    return await server.waitForCallback(180_000);
   } catch (err) {
-    const normalized = normalizeError(err);
-    if (normalized.statusCode === 401 || normalized.statusCode === 403) {
-      throw new CliError("That API key was rejected. Double-check it in the console.", {
-        exitCode: ExitCode.NO_PERM,
-        code: "invalid_api_key",
+    const reason = err instanceof Error ? err.message : "unknown error";
+    throw new CliError(
+      `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechify login --refresh-token <token>\` for now.`,
+      { exitCode: ExitCode.UNAVAILABLE, code: "browser_login_failed", cause: err },
+    );
+  } finally {
+    server.close();
+  }
+}
+
+async function obtainSession(opts: LoginOptions): Promise<Session> {
+  if (opts.refreshToken) {
+    const firebaseApiKey = opts.firebaseApiKey ?? process.env.SPEECHIFY_FB_API_KEY;
+    if (!firebaseApiKey) {
+      throw new CliError("Provide the Firebase web API key via --firebase-api-key or $SPEECHIFY_FB_API_KEY.", {
+        exitCode: ExitCode.DATA_ERR,
+        code: "missing_fb_api_key",
       });
     }
-    throw err;
+    return { refreshToken: opts.refreshToken.trim(), firebaseApiKey };
   }
+  return browserLogin();
 }
 
-export function registerAuthCommand(program: Command): void {
-  const auth = program.command("auth").description("Manage Speechify credentials.");
-
-  auth
+export function registerAuthCommands(program: Command): void {
+  program
     .command("login")
-    .description("Store and validate a Speechify API key.")
+    .description("Authenticate as a console user (browser flow, or --refresh-token).")
+    .option("--refresh-token <token>", "Firebase refresh token (skips the browser flow)")
+    .option("--firebase-api-key <key>", "Firebase web API key (or $SPEECHIFY_FB_API_KEY)")
     .action(async (_options: unknown, command: Command) => {
-      const opts = command.optsWithGlobals() as GlobalOptions;
-      const key = await obtainKey(opts);
-      await validateKey(key, opts);
-      const path = await writeConfigFile({ api_key: key, api_version: opts.apiVersion, base_url: opts.baseUrl });
-      if (opts.json) printJson({ status: "logged_in", key: maskKey(key), config: path });
-      else logInfo(`Logged in as ${maskKey(key)}. Saved to ${path}.`);
+      const opts = command.optsWithGlobals() as LoginOptions;
+      const session = await obtainSession(opts);
+      // Validate the credential (and normalize the refresh token) before storing.
+      const refreshed = await exchangeRefreshToken(session.firebaseApiKey, session.refreshToken);
+
+      const stored = (await readConfigFile()) ?? {};
+      await writeConfigFile({
+        ...stored,
+        refresh_token: refreshed.refreshToken,
+        firebase_api_key: session.firebaseApiKey,
+        base_url: opts.baseUrl ?? stored.base_url,
+        api_key: undefined,
+      });
+
+      // Pick a workspace: honor --workspace, else auto-select a lone workspace.
+      const auth = await resolveAuth({ baseUrl: opts.baseUrl });
+      const workspaces = await listWorkspaces(createHttpClient(auth));
+      let selected = workspaces.find((w) => w.id === opts.workspace);
+      if (!selected && workspaces.length === 1) selected = workspaces[0];
+      if (selected) {
+        await writeConfigFile({ ...((await readConfigFile()) ?? {}), workspace_id: selected.id });
+      }
+
+      if (opts.json) {
+        printJson({ status: "logged_in", workspace: selected ?? null, workspace_count: workspaces.length });
+        return;
+      }
+      logInfo("Logged in.");
+      if (selected) logInfo(`Workspace: ${selected.name} (${selected.id}).`);
+      else if (workspaces.length === 0) logWarning("You don't belong to any workspaces yet.");
+      else logInfo("Select a workspace: speechify workspace use <id>  (list: speechify workspace list).");
     });
 
-  auth
+  program
     .command("logout")
-    .description("Remove the stored API key.")
+    .description("Forget the stored session / credentials.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const removed = await clearConfigFile();
       if (opts.json) printJson({ status: removed ? "logged_out" : "not_logged_in" });
-      else logInfo(removed ? "Logged out (stored key removed)." : "No stored key to remove.");
+      else logInfo(removed ? "Logged out." : "Not logged in.");
     });
 
-  auth
-    .command("status")
-    .description("Show whether you're logged in and where the key comes from.")
+  program
+    .command("whoami")
+    .description("Show how you're authenticated and the active workspace.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const flagKey = opts.apiKey?.trim();
+      const envKey = process.env.SPEECHIFY_API_KEY?.trim();
+      if (flagKey || envKey) {
+        const source = flagKey ? "flag" : "env";
+        const key = flagKey || envKey || "";
+        if (opts.json) printJson({ mode: "api-key", source, key: maskKey(key) });
+        else logInfo(`Authenticated with an API key (${source}): ${maskKey(key)}`);
+        return;
+      }
       const stored = await readConfigFile();
-      const key = opts.apiKey ?? process.env[API_KEY_ENV] ?? stored?.api_key;
-      const source = opts.apiKey ? "flag" : process.env[API_KEY_ENV] ? "env" : stored?.api_key ? "file" : "none";
-
-      if (opts.json) {
-        printJson({ logged_in: Boolean(key), source, key: key ? maskKey(key) : null, config: configFilePath() });
+      if (stored?.refresh_token) {
+        if (opts.json) printJson({ mode: "console", workspace_id: stored.workspace_id ?? null });
+        else logInfo(`Logged in (console session). Workspace: ${stored.workspace_id ?? "(none selected)"}.`);
         return;
       }
-      if (!key) {
-        logInfo("Not logged in. Run `speechify auth login` or set SPEECHIFY_API_KEY.");
+      if (stored?.api_key) {
+        if (opts.json) printJson({ mode: "api-key", source: "file", key: maskKey(stored.api_key) });
+        else logInfo(`Authenticated with a stored API key: ${maskKey(stored.api_key)}`);
         return;
       }
-      logInfo(`Logged in (${source}): ${maskKey(key)}`);
+      if (opts.json) printJson({ mode: null });
+      else logInfo("Not logged in. Run `speechify login`.");
     });
 }

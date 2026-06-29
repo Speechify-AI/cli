@@ -1,13 +1,21 @@
-// Persistent credential/config store written by `auth login`.
+// Persistent credential/config store written by `login` / `workspace use`.
 //
 // Location follows platform convention: $XDG_CONFIG_HOME (or ~/.config) on
-// Unix, %APPDATA% on Windows — under a `speechify/` dir. The file holds the API
-// key and is written with 0600 perms (owner read/write only).
+// Unix, %APPDATA% on Windows — under a `speechify/` dir. Holds the console
+// session (Firebase refresh token + the public web API key used to mint ID
+// tokens) and the selected workspace, written with 0600 perms.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export interface StoredConfig {
+  // Console session (primary auth): a long-lived Firebase refresh token, plus the
+  // public Firebase web API key used to exchange it for short-lived ID tokens.
+  refresh_token?: string;
+  firebase_api_key?: string;
+  /** Selected workspace, sent as the X-Tenant-ID header (ws_… form). */
+  workspace_id?: string;
+  // Power-user / legacy path: a raw API key (sk_…) for the public TTS surface.
   api_key?: string;
   api_version?: string;
   base_url?: string;
