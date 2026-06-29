@@ -1,12 +1,13 @@
-// Builds a configured @speechify/api client.
+// Builds a configured @speechify/api client for the TTS surface.
 //
-// The SDK owns auth (Bearer), retries, and a build-time pinned `Speechify-Version`.
-// We pass the key as `apiKey` (the SDK's Bearer token option) and only override
-// baseUrl / the version header when explicitly set.
+// The Bearer can be a Firebase ID token (console session) or an sk_… API key —
+// the unified server middleware accepts both. In console mode we also send the
+// selected workspace as X-Tenant-ID.
 import { SpeechifyClient } from "@speechify/api";
 
 export interface ClientConfig {
-  apiKey: string;
+  bearer: string;
+  tenantId?: string;
   apiVersion?: string;
   baseUrl?: string;
 }
@@ -14,9 +15,10 @@ export interface ClientConfig {
 export function createClient(config: ClientConfig): SpeechifyClient {
   const headers: Record<string, string> = {};
   if (config.apiVersion) headers["Speechify-Version"] = config.apiVersion;
+  if (config.tenantId) headers["X-Tenant-ID"] = config.tenantId;
 
   return new SpeechifyClient({
-    apiKey: config.apiKey,
+    apiKey: config.bearer,
     ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
   });

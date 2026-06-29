@@ -3,7 +3,7 @@
 import { writeFile } from "node:fs/promises";
 import { type Command, Option } from "commander";
 import { PlaybackUnavailableError, playAudio } from "../audio/play.js";
-import { resolveConfig } from "../config.js";
+import { requireWorkspace, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
 import { CliError, ExitCode } from "../core/errors.js";
 import {
@@ -16,7 +16,7 @@ import {
   synthesize,
 } from "../core/speech.js";
 import { resolveTextInput } from "../io.js";
-import { type GlobalOptions, toConfigInput } from "../options.js";
+import type { GlobalOptions } from "../options.js";
 import { formatBytes, logInfo, logWarning, printJson } from "../output.js";
 
 interface SayOptions extends GlobalOptions {
@@ -57,7 +57,19 @@ export function registerSayCommand(program: Command): void {
       }
 
       const input = await resolveTextInput(textArg, opts.inputFile);
-      const client = createClient(await resolveConfig(toConfigInput(opts)));
+      const auth = await resolveAuth({
+        apiKey: opts.apiKey,
+        apiVersion: opts.apiVersion,
+        baseUrl: opts.baseUrl,
+        workspaceId: opts.workspace,
+      });
+      requireWorkspace(auth);
+      const client = createClient({
+        bearer: auth.bearer,
+        tenantId: auth.tenantId,
+        apiVersion: auth.apiVersion,
+        baseUrl: auth.baseUrl,
+      });
       const result = await synthesize(client, {
         input,
         voiceId: opts.voice,

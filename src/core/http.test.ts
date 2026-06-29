@@ -1,0 +1,47 @@
+import { describe, expect, it, vi } from "vitest";
+import type { AuthContext } from "../auth/session.js";
+import { createHttpClient } from "./http.js";
+
+const auth: AuthContext = { bearer: "tok", tenantId: "ws_1", baseUrl: "https://api.example", mode: "console" };
+
+function jsonResponse(status: number, body: unknown): Response {
+  return { ok: status >= 200 && status < 300, status, json: async () => body } as unknown as Response;
+}
+
+describe("createHttpClient", () => {
+  it("GET sends Authorization + X-Tenant-ID, drops undefined query, parses JSON", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      jsonResponse(200, { ok: true }),
+    );
+    const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
+
+    const out = await http.get<{ ok: boolean }>("/v1/thing", { a: 1, b: undefined });
+    expect(out).toEqual({ ok: true });
+
+    const call = fetchImpl.mock.calls[0];
+    expect(String(call?.[0])).toBe("https://api.example/v1/thing?a=1");
+    const headers = (call?.[1] as RequestInit | undefined)?.headers as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer tok");
+    expect(headers["x-tenant-id"]).toBe("ws_1");
+  });
+
+  it("maps an error envelope to a CliError carrying code/status/requestId", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(404, { error: { code: "not_found", message: "nope" }, request_id: "req_9" }),
+    );
+    const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
+    await expect(http.get("/v1/missing")).rejects.toMatchObject({
+      name: "CliError",
+      code: "not_found",
+      statusCode: 404,
+      requestId: "req_9",
+      exitCode: 69,
+    });
+  });
+
+  it("DELETE resolves on 204", async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: true, status: 204 }) as unknown as Response);
+    const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
+    await expect(http.del("/v1/thing/1")).resolves.toBeUndefined();
+  });
+});

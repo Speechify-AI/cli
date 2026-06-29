@@ -1,7 +1,8 @@
 // Error normalization for the whole CLI.
 //
-// Two error origins fold into one NormalizedError shape:
-//   1. CliError        — our own input/config failures, with an explicit exit code.
+// Error origins fold into one NormalizedError shape:
+//   1. CliError        — our own input/config failures (and API failures from the
+//                        raw HTTP client), with an explicit exit code.
 //   2. SpeechifyError  — thrown by @speechify/api; `.statusCode` + `.body` carry
 //                        the standard API envelope { error: { code, message,
 //                        fields }, request_id }.
@@ -15,25 +16,34 @@ export const ExitCode = {
   UNAVAILABLE: 69, // EX_UNAVAILABLE — upstream/not-found (404/5xx)
   TEMP_FAIL: 75, // EX_TEMPFAIL    — rate limited (429), retry later
   NO_PERM: 77, // EX_NOPERM      — auth/permission (401/403)
-  CONFIG: 78, // EX_CONFIG      — misconfiguration (missing/invalid key)
+  CONFIG: 78, // EX_CONFIG      — misconfiguration (missing/invalid credentials)
 } as const;
 
 export interface CliErrorOptions {
   exitCode?: number;
   code?: string;
+  statusCode?: number;
+  requestId?: string;
+  fields?: Record<string, unknown>;
   cause?: unknown;
 }
 
-/** A failure we raise ourselves (bad flags, missing key, oversized input). */
+/** A failure we raise ourselves, or a normalized API failure from the HTTP client. */
 export class CliError extends Error {
   readonly exitCode: number;
   readonly code?: string;
+  readonly statusCode?: number;
+  readonly requestId?: string;
+  readonly fields?: Record<string, unknown>;
 
   constructor(message: string, options: CliErrorOptions = {}) {
     super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
     this.name = "CliError";
     this.exitCode = options.exitCode ?? ExitCode.GENERIC;
     this.code = options.code;
+    this.statusCode = options.statusCode;
+    this.requestId = options.requestId;
+    this.fields = options.fields;
   }
 }
 
@@ -78,9 +88,34 @@ function exitCodeForStatus(status: number | undefined): number {
   return ExitCode.GENERIC;
 }
 
+/** Build a CliError from a non-2xx fetch Response, reading the API error envelope. */
+export async function apiErrorFromResponse(res: Response): Promise<CliError> {
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    body = undefined;
+  }
+  const envelope = readApiEnvelope(body);
+  return new CliError(envelope.message ?? `Request failed (HTTP ${res.status}).`, {
+    exitCode: exitCodeForStatus(res.status),
+    code: envelope.code,
+    statusCode: res.status,
+    requestId: envelope.requestId,
+    fields: envelope.fields,
+  });
+}
+
 export function normalizeError(err: unknown): NormalizedError {
   if (err instanceof CliError) {
-    return { message: err.message, exitCode: err.exitCode, code: err.code };
+    return {
+      message: err.message,
+      exitCode: err.exitCode,
+      code: err.code,
+      statusCode: err.statusCode,
+      requestId: err.requestId,
+      fields: err.fields,
+    };
   }
   if (err instanceof SpeechifyError) {
     const envelope = readApiEnvelope(err.body);
