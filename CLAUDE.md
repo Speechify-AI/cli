@@ -54,7 +54,7 @@ src/
     errors.ts       CliError + normalizeError + apiErrorFromResponse; sysexits codes
     speech.ts / voices.ts / workspaces.ts   service layer
   commands/         thin adapters over core/ (auth, workspace, say, voices)
-  configFile.ts     ~/.config/speechify/config.json (refresh_token, firebase_api_key, workspace_id)
+  configFile.ts     ~/.config/speechify/config.json (refresh_token, firebase_api_key, cached id_token+expiry, workspace_id)
   output.ts io.ts options.ts
 ```
 

@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { writeConfigFile } from "../configFile.js";
+import { readConfigFile, writeConfigFile } from "../configFile.js";
 import { CliError } from "../core/errors.js";
 import { DEFAULT_BASE_URL, requireWorkspace, resetIdTokenCache, resolveAuth } from "./session.js";
 
@@ -45,6 +45,66 @@ describe("resolveAuth", () => {
 
     const auth = await resolveAuth();
     expect(auth).toMatchObject({ bearer: "idtok", tenantId: "ws_1", mode: "console" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists the minted ID token (+expiry) and rotated refresh token after an exchange", async () => {
+    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            json: async () => ({ id_token: "idtok", refresh_token: "rt_rotated", expires_in: "3600" }),
+          }) as unknown as Response,
+      ),
+    );
+
+    await resolveAuth();
+
+    const cfg = await readConfigFile();
+    expect(cfg).toMatchObject({ id_token: "idtok", refresh_token: "rt_rotated" });
+    expect(cfg?.id_token_expires_at).toBeGreaterThan(Date.now());
+  });
+
+  it("reuses a persisted, unexpired ID token without exchanging", async () => {
+    await writeConfigFile({
+      refresh_token: "rt",
+      firebase_api_key: "fbkey",
+      workspace_id: "ws_1",
+      id_token: "cached_idtok",
+      id_token_expires_at: Date.now() + 30 * 60_000,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = await resolveAuth();
+    expect(auth).toMatchObject({ bearer: "cached_idtok", tenantId: "ws_1", mode: "console" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("re-exchanges when the persisted ID token has expired", async () => {
+    await writeConfigFile({
+      refresh_token: "rt",
+      firebase_api_key: "fbkey",
+      workspace_id: "ws_1",
+      id_token: "stale_idtok",
+      id_token_expires_at: Date.now() - 1,
+    });
+    const fetchMock = vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({ id_token: "fresh_idtok", refresh_token: "rt", expires_in: "3600" }),
+        }) as unknown as Response,
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const auth = await resolveAuth();
+    expect(auth.bearer).toBe("fresh_idtok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

@@ -38,6 +38,10 @@ function clean(value: string | undefined): string | undefined {
   return value && value.trim().length > 0 ? value : undefined;
 }
 
+// Treat an ID token as expired this far ahead of its real expiry, so we never
+// hand out a token that dies mid-request.
+const ID_TOKEN_SKEW_MS = 60_000;
+
 // Per-process ID-token cache so we don't re-mint on every call within a run.
 let idTokenCache: { token: string; expiresAt: number } | undefined;
 
@@ -46,10 +50,27 @@ export function resetIdTokenCache(): void {
   idTokenCache = undefined;
 }
 
+function fresh(expiresAt: number | undefined, now: number): boolean {
+  return expiresAt !== undefined && expiresAt - ID_TOKEN_SKEW_MS > now;
+}
+
 async function getValidIdToken(stored: StoredConfig): Promise<string> {
   const now = Date.now();
-  if (idTokenCache && idTokenCache.expiresAt - 60_000 > now) return idTokenCache.token;
 
+  // 1. In-process cache — fast path within a single invocation.
+  if (idTokenCache && fresh(idTokenCache.expiresAt, now)) return idTokenCache.token;
+
+  // 2. ID token persisted by a previous invocation — reuse until it nears expiry.
+  // This is what stops us exchanging (and, under refresh-token rotation,
+  // rotating) the refresh token on every single command.
+  if (stored.id_token && fresh(stored.id_token_expires_at, now)) {
+    idTokenCache = { token: stored.id_token, expiresAt: stored.id_token_expires_at as number };
+    return stored.id_token;
+  }
+
+  // 3. Mint a fresh ID token. Exchanging may rotate the refresh token, so persist
+  // the (possibly new) refresh token together with the ID token + its expiry —
+  // one write, so the next invocation reuses the ID token instead of re-exchanging.
   const apiKey = clean(stored.firebase_api_key) ?? clean(process.env[FB_API_KEY_ENV]);
   const refreshToken = clean(stored.refresh_token);
   if (!apiKey || !refreshToken) {
@@ -60,11 +81,14 @@ async function getValidIdToken(stored: StoredConfig): Promise<string> {
   }
 
   const refreshed = await exchangeRefreshToken(apiKey, refreshToken);
-  idTokenCache = { token: refreshed.idToken, expiresAt: now + refreshed.expiresInSec * 1000 };
-  // Persist a rotated refresh token so the next process keeps working.
-  if (refreshed.refreshToken && refreshed.refreshToken !== refreshToken) {
-    await writeConfigFile({ ...stored, refresh_token: refreshed.refreshToken });
-  }
+  const expiresAt = now + refreshed.expiresInSec * 1000;
+  idTokenCache = { token: refreshed.idToken, expiresAt };
+  await writeConfigFile({
+    ...stored,
+    refresh_token: refreshed.refreshToken || refreshToken,
+    id_token: refreshed.idToken,
+    id_token_expires_at: expiresAt,
+  });
   return refreshed.idToken;
 }
 

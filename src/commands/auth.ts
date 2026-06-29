@@ -73,10 +73,14 @@ export function registerAuthCommands(program: Command): void {
       const refreshed = await exchangeRefreshToken(session.firebaseApiKey, session.refreshToken);
 
       const stored = (await readConfigFile()) ?? {};
+      // Persist the ID token from this exchange so the resolveAuth() below reuses
+      // it instead of exchanging (and rotating the refresh token) a second time.
       await writeConfigFile({
         ...stored,
         refresh_token: refreshed.refreshToken,
         firebase_api_key: session.firebaseApiKey,
+        id_token: refreshed.idToken,
+        id_token_expires_at: Date.now() + refreshed.expiresInSec * 1000,
         base_url: opts.baseUrl ?? stored.base_url,
         api_key: undefined,
       });
