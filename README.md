@@ -23,8 +23,12 @@ speechify whoami                # how you're authed + active workspace
 speechify logout
 ```
 
-> ⚠️ **Browser login depends on a console-side `/cli/login` page that isn't live
-> yet.** Until it ships, log in with a Firebase refresh token directly:
+> ⚠️ **Browser login depends on console-side `/cli/login` + `/cli/token`
+> endpoints that aren't live yet.** The CLI implements a PKCE authorization-code
+> flow (RFC 8252/7636): a loopback server receives only a single-use `code`,
+> which it exchanges over HTTPS for the credential — the durable token never
+> appears in a URL. Until the console endpoints ship, log in with a Firebase
+> refresh token directly:
 > ```bash
 > speechify login --refresh-token <token> --firebase-api-key <fb_web_api_key>
 > # or: export SPEECHIFY_FB_API_KEY=<fb_web_api_key>

@@ -7,7 +7,9 @@
 import type { Command } from "commander";
 import { openBrowser } from "../auth/browser.js";
 import { startCallbackServer } from "../auth/callbackServer.js";
+import { CLI_CLIENT_ID, exchangeAuthCode } from "../auth/cliAuth.js";
 import { exchangeRefreshToken } from "../auth/firebase.js";
+import { createPkcePair } from "../auth/pkce.js";
 import { resolveAuth } from "../auth/session.js";
 import { clearConfigFile, readConfigFile, writeConfigFile } from "../configFile.js";
 import { CliError, ExitCode } from "../core/errors.js";
@@ -28,19 +30,38 @@ interface Session {
 
 async function browserLogin(): Promise<Session> {
   const consoleUrl = (process.env.SPEECHIFY_CONSOLE_URL ?? "https://console.speechify.ai").replace(/\/+$/, "");
+  const pkce = createPkcePair();
   const server = await startCallbackServer();
-  const loginUrl = `${consoleUrl}/cli/login?redirect_uri=${encodeURIComponent(server.redirectUri)}&state=${server.state}`;
-  logInfo("Opening your browser to sign in…");
-  logInfo(loginUrl);
-  openBrowser(loginUrl);
   try {
-    return await server.waitForCallback(180_000);
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "unknown error";
-    throw new CliError(
-      `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechify login --refresh-token <token>\` for now.`,
-      { exitCode: ExitCode.UNAVAILABLE, code: "browser_login_failed", cause: err },
-    );
+    const authorizeUrl = `${consoleUrl}/cli/login?${new URLSearchParams({
+      client_id: CLI_CLIENT_ID,
+      redirect_uri: server.redirectUri,
+      state: server.state,
+      code_challenge: pkce.challenge,
+      code_challenge_method: pkce.method,
+    }).toString()}`;
+    logInfo("Opening your browser to sign in…");
+    logInfo(authorizeUrl);
+    openBrowser(authorizeUrl);
+
+    let code: string;
+    try {
+      ({ code } = await server.waitForCallback(180_000));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "unknown error";
+      throw new CliError(
+        `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechify login --refresh-token <token>\` for now.`,
+        { exitCode: ExitCode.UNAVAILABLE, code: "browser_login_failed", cause: err },
+      );
+    }
+
+    // The loopback only ever sees a single-use code — exchange it (with the PKCE
+    // verifier) for the durable credential over HTTPS.
+    return await exchangeAuthCode(consoleUrl, {
+      code,
+      codeVerifier: pkce.verifier,
+      redirectUri: server.redirectUri,
+    });
   } finally {
     server.close();
   }

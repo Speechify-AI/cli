@@ -13,10 +13,13 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
 
 - **Works today:** `login` / `logout` / `whoami`, `workspace list|use|current`,
   `say`, `voices list`, `api` (gh-style raw passthrough), `mcp` (MCP server).
-- **Blocked (backend gap):** a complete browser SSO `login` needs a console-side
-  `/cli/login` page that redirects the Firebase refresh token back to the CLI's
-  localhost callback — **it doesn't exist yet**. The callback server/CSRF/browser
-  plumbing is built + tested; until the page ships the working path is
+- **Blocked (backend gap):** a complete browser `login` needs console-side
+  `/cli/login` (page) + `/cli/token` (exchange) endpoints — **they don't exist
+  yet**. The CLI side is built + tested as a PKCE auth-code flow (RFC 8252/7636):
+  the loopback only ever receives a single-use `code`, exchanged over HTTPS for
+  the credential — the durable token never rides in a URL. Contract lives in
+  `auth/callbackServer.ts`; pieces are `auth/pkce.ts` + `auth/cliAuth.ts`. Until
+  the endpoints ship, the working path is
   `speechify login --refresh-token <token> --firebase-api-key <key>`.
 - **Next (chosen):** API keys + usage, knowledge-base sync, conversations +
   analytics — all hit console (internal-audience) endpoints via `core/http.ts`.
