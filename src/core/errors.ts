@@ -10,14 +10,57 @@
 import { SpeechifyError } from "@speechify/api";
 
 // Exit codes follow BSD sysexits(3) so shell callers and scripts can branch.
+// NEEDS_INPUT (2) is deliberately outside the sysexits range and reserved for
+// the structured "needs input" outcome — never collide it with commander's own
+// arg-parse failures (those exit 1).
 export const ExitCode = {
   GENERIC: 1,
+  NEEDS_INPUT: 2, // a required input is missing in a non-interactive context
   DATA_ERR: 65, // EX_DATAERR     — bad input (400/422)
   UNAVAILABLE: 69, // EX_UNAVAILABLE — upstream/not-found (404/5xx)
   TEMP_FAIL: 75, // EX_TEMPFAIL    — rate limited (429), retry later
   NO_PERM: 77, // EX_NOPERM      — auth/permission (401/403)
   CONFIG: 78, // EX_CONFIG      — misconfiguration (missing/invalid credentials)
 } as const;
+
+/** A single input a command would otherwise collect interactively. */
+export interface InputField {
+  /** Logical name, e.g. "text". */
+  name: string;
+  /** Human/agent description of the input. */
+  description: string;
+  /** Whether the command cannot proceed without it. */
+  required?: boolean;
+  /** How to supply it non-interactively, e.g. "--voice <id>" or "<text> (positional)". */
+  flag?: string;
+  type?: "string" | "number" | "enum";
+  /** Allowed values when `type` is "enum". */
+  enum?: string[];
+  default?: string;
+  /** Hint that the value is sensitive (masked when prompted). */
+  secret?: boolean;
+}
+
+/**
+ * Thrown when a command needs input it can't collect — running under an agent, in
+ * CI, on a non-TTY, or with --no-input. Instead of blocking on stdin, the CLI
+ * surfaces the inputs the caller can provide so an agent can collect them and
+ * re-invoke. Rendered by `emitNeedsInput`; carries exit code 2 (distinct from
+ * generic/data errors). Extends Error (not CliError) so it bypasses the normal
+ * error envelope and is special-cased in the fatal handler.
+ */
+export class NeedsInputError extends Error {
+  readonly exitCode = ExitCode.NEEDS_INPUT;
+
+  constructor(
+    readonly command: string,
+    readonly fields: InputField[],
+    readonly missing: string[],
+  ) {
+    super(`\`${command}\` needs input (${missing.join(", ")}) but is running non-interactively.`);
+    this.name = "NeedsInputError";
+  }
+}
 
 export interface CliErrorOptions {
   exitCode?: number;

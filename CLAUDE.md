@@ -30,9 +30,13 @@ The CLI authenticates as a **console user** and acts inside a **selected
 workspace** — this is what unlocks the full console surface (vs an API key, which
 only reaches public TTS + scoped agent endpoints, never api-keys/usage/members).
 
-- Durable credential = **Firebase refresh token** (stored `0600` at
-  `~/.config/speechify/config.json`). It's exchanged for short-lived **ID tokens**
-  via Google's public `securetoken` endpoint (`auth/firebase.ts`).
+- Durable credential = **Firebase refresh token**, stored in the **OS keychain**
+  (service `speechifyai-cli`; macOS Keychain / Windows Credential Manager / Linux
+  Secret Service via `@napi-rs/keyring`), with an **AES-256-GCM encrypted-file**
+  fallback at `~/.config/speechify/credentials.enc` (`0600`) on keychain-less
+  hosts. Legacy plaintext `config.json` is migrated into the keychain on first
+  read, then deleted. It's exchanged for short-lived **ID tokens** via Google's
+  public `securetoken` endpoint (`auth/firebase.ts`).
 - The API auth is `Authorization: Bearer <ID token>` + `X-Tenant-ID: <ws_…>`.
 - `auth/session.ts#resolveAuth` is the single resolver → `AuthContext { bearer,
   tenantId, baseUrl, mode }`. Precedence: `--api-key`/env → console session →
@@ -44,7 +48,7 @@ only reaches public TTS + scoped agent endpoints, never api-keys/usage/members).
 
 ```
 src/
-  bin.ts            commander program; one error path (normalizeError) + exit codes
+  bin.ts            commander program; global opts attached to every subcommand (applyGlobalOptions); one error path (normalizeError) + exit codes
   auth/
     session.ts      resolveAuth() → AuthContext (the single auth source)
     firebase.ts     refresh token → ID token (Google securetoken)
@@ -60,7 +64,8 @@ src/
     server.ts       buildServer() → MCP tools (search_docs + authed list_voices/text_to_speech)
     run.ts          stdio / streamable-HTTP transport wiring
   commands/         thin adapters over core/ (auth, workspace, say, voices, api, mcp)
-  configFile.ts     ~/.config/speechify/config.json (refresh_token, firebase_api_key, cached id_token+expiry, workspace_id)
+  configFile.ts     OS keychain (service speechifyai-cli) + AES-256-GCM credentials.enc fallback; same StoredConfig API
+  runtime.ts        detectAgent() + outputMode(opts)/isInteractive(opts) — pure helpers (no global RunContext)
   output.ts io.ts options.ts
 ```
 
@@ -73,9 +78,13 @@ adapters — never call the SDK or fetch directly from a command.
   `dist/bin.js` (`pnpm build`). **vitest** (`pnpm test`), **biome** (`pnpm lint` /
   `pnpm format`). **pnpm**. Run `pnpm typecheck` before committing.
 - Output discipline: human status → **stderr**; machine output (`--json`, raw
-  audio via `--out -`) → **stdout** (keep stdout pipe-clean).
+  audio via `--out -`) → **stdout** (keep stdout pipe-clean). Commands emit via
+  `output.ts#emit(mode, spec)`, where `mode` comes from `runtime.ts#outputMode(opts)`.
+  Auto-agent-mode only *widens* `--json` (adds `ok`/`context`/`hints`); it never
+  changes the bare `--json` payload. `SPEECHIFY_OUTPUT` is the escape hatch.
 - Errors: everything resolves through `normalizeError`; exit codes are sysexits
-  (78 config/auth-missing, 77 auth, 75 rate-limit, 65 data, 69 upstream).
+  (78 config/auth-missing, 77 auth, 75 rate-limit, 65 data, 69 upstream) — plus
+  `2` reserved for `NeedsInputError` (missing required input, non-interactive).
 - Commit style: conventional commits (`feat:`, `fix:`, …). End commit messages with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 

@@ -7,19 +7,39 @@ import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSayCommand } from "./commands/say.js";
 import { registerVoicesCommand } from "./commands/voices.js";
 import { registerWorkspaceCommand } from "./commands/workspace.js";
-import { normalizeError } from "./core/errors.js";
+import { NeedsInputError, normalizeError } from "./core/errors.js";
+import { emitNeedsInput } from "./output.js";
+import { type OutputMode, outputMode } from "./runtime.js";
+
+// Global options available on every command. They're attached to the root *and*
+// each (nested) subcommand so they show up in that subcommand's --help and parse
+// before or after the subcommand name. `--<flag> <value>` strings double as the
+// long-flag lookup key (the substring before the first space).
+const GLOBAL_OPTIONS: ReadonlyArray<readonly [flags: string, description: string]> = [
+  ["--api-key <key>", "Speechify API key (overrides login / $SPEECHIFY_API_KEY)"],
+  ["--workspace <id>", "act in this workspace for one command (overrides the selected one)"],
+  ["--api-version <date>", "pin the Speechify-Version header (ISO date, e.g. 2026-06-27)"],
+  ["--base-url <url>", "override the API origin (defaults to $SPEECHIFY_BASE_URL or production)"],
+  ["--json", "emit machine-readable JSON on stdout"],
+  ["--agent-friendly", "JSON output plus explanatory context for AI agents"],
+  ["--no-input", "never prompt; return a needs-input spec instead"],
+];
+
+/** Attach the global options to a command and all its subcommands (skips any a command already defines). */
+function applyGlobalOptions(cmd: Command): void {
+  for (const [flags, description] of GLOBAL_OPTIONS) {
+    const long = flags.split(" ", 1)[0];
+    if (!cmd.options.some((option) => option.long === long)) cmd.option(flags, description);
+  }
+  for (const sub of cmd.commands) applyGlobalOptions(sub);
+}
 
 function buildProgram(): Command {
   const program = new Command();
   program
     .name("speechifyai")
     .description("SpeechifyAI command-line companion to the developer console.")
-    .version(__CLI_VERSION__, "-V, --version", "print the CLI version")
-    .option("--api-key <key>", "Speechify API key (overrides login / $SPEECHIFY_API_KEY)")
-    .option("--workspace <id>", "act in this workspace for one command (overrides the selected one)")
-    .option("--api-version <date>", "pin the Speechify-Version header (ISO date, e.g. 2026-06-27)")
-    .option("--base-url <url>", "override the API origin (defaults to $SPEECHIFY_BASE_URL or production)")
-    .option("--json", "emit machine-readable JSON on stdout");
+    .version(__CLI_VERSION__, "-V, --version", "print the CLI version");
 
   registerAuthCommands(program);
   registerWorkspaceCommand(program);
@@ -28,12 +48,22 @@ function buildProgram(): Command {
   registerApiCommand(program);
   registerMcpCommand(program);
 
+  // After all commands exist, hang the globals off the whole tree.
+  applyGlobalOptions(program);
+
   return program;
 }
 
-function handleFatal(err: unknown): never {
+function handleFatal(err: unknown, mode: OutputMode): never {
+  // A missing required input isn't an error envelope — it's a structured spec the
+  // caller (or agent) can act on. Render it and exit 2.
+  if (err instanceof NeedsInputError) {
+    emitNeedsInput(err, mode);
+    process.exit(err.exitCode);
+  }
+
   const normalized = normalizeError(err);
-  if (process.argv.includes("--json")) {
+  if (mode === "json" || mode === "agent") {
     process.stderr.write(
       `${JSON.stringify(
         {
@@ -52,10 +82,17 @@ function handleFatal(err: unknown): never {
 }
 
 async function main(): Promise<void> {
+  // Resolve the output mode up front (best-effort from argv) so the fatal handler
+  // can render in the same mode even if command parsing/dispatch throws. The flags
+  // are valueless booleans, so an argv scan matches commander's parsed opts.
+  const mode = await outputMode({
+    json: process.argv.includes("--json"),
+    agentFriendly: process.argv.includes("--agent-friendly"),
+  });
   try {
     await buildProgram().parseAsync(process.argv);
   } catch (err) {
-    handleFatal(err);
+    handleFatal(err, mode);
   }
 }
 

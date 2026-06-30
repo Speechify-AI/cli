@@ -2,8 +2,27 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// resolveConfig reads through readConfigFile, which now prefers the OS keychain.
+// Force the encrypted-file fallback so these tests stay hermetic (never touch the
+// real keychain). configFile round-trip/migration coverage lives in
+// configFile.test.ts; this file only exercises the (legacy) resolveConfig layer.
+vi.mock("@napi-rs/keyring", () => ({
+  Entry: class {
+    getPassword(): string | null {
+      throw new Error("no keychain backend");
+    }
+    setPassword(): void {
+      throw new Error("no keychain backend");
+    }
+    deletePassword(): boolean {
+      throw new Error("no keychain backend");
+    }
+  },
+}));
+
 import { resolveConfig } from "./config.js";
-import { clearConfigFile, configFilePath, readConfigFile, writeConfigFile } from "./configFile.js";
+import { writeConfigFile } from "./configFile.js";
 import { CliError } from "./core/errors.js";
 
 let dir: string;
@@ -21,22 +40,6 @@ beforeEach(async () => {
 afterEach(async () => {
   vi.unstubAllEnvs();
   await rm(dir, { recursive: true, force: true });
-});
-
-describe("configFile", () => {
-  it("writes under the config dir and round-trips", async () => {
-    const path = await writeConfigFile({ api_key: "sk_file" });
-    expect(path).toBe(configFilePath());
-    expect(path.startsWith(dir)).toBe(true);
-    expect(await readConfigFile()).toEqual({ api_key: "sk_file" });
-  });
-
-  it("clear returns true then false", async () => {
-    await writeConfigFile({ api_key: "sk_file" });
-    expect(await clearConfigFile()).toBe(true);
-    expect(await readConfigFile()).toBeUndefined();
-    expect(await clearConfigFile()).toBe(false);
-  });
 });
 
 describe("resolveConfig precedence", () => {

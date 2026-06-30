@@ -7,7 +7,8 @@ import { CliError, ExitCode } from "../core/errors.js";
 import { createHttpClient } from "../core/http.js";
 import { listWorkspaces } from "../core/workspaces.js";
 import type { GlobalOptions } from "../options.js";
-import { logInfo, printJson, renderTable } from "../output.js";
+import { emit, logInfo, printJson, renderTable } from "../output.js";
+import { outputMode } from "../runtime.js";
 
 export function registerWorkspaceCommand(program: Command): void {
   const workspace = program.command("workspace").alias("workspaces").description("Select and inspect workspaces.");
@@ -17,23 +18,29 @@ export function registerWorkspaceCommand(program: Command): void {
     .description("List the workspaces you belong to.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const mode = await outputMode(opts);
       const auth = await resolveAuth({ apiKey: opts.apiKey, apiVersion: opts.apiVersion, baseUrl: opts.baseUrl });
       const workspaces = await listWorkspaces(createHttpClient(auth));
       const current = opts.workspace ?? (await readConfigFile())?.workspace_id;
 
-      if (opts.json) {
-        printJson(workspaces.map((w) => ({ ...w, current: w.id === current })));
-        return;
-      }
-      if (workspaces.length === 0) {
-        logInfo("You don't belong to any workspaces.");
-        return;
-      }
-      const table = renderTable(
-        ["", "ID", "NAME", "ROLE"],
-        workspaces.map((w) => [w.id === current ? "*" : "", w.id, w.name, w.role ?? ""]),
-      );
-      process.stdout.write(`${table}\n`);
+      emit(mode, {
+        data: workspaces.map((w) => ({ ...w, current: w.id === current })),
+        human: () => {
+          if (workspaces.length === 0) {
+            logInfo("You don't belong to any workspaces.");
+            return;
+          }
+          const table = renderTable(
+            ["", "ID", "NAME", "ROLE"],
+            workspaces.map((w) => [w.id === current ? "*" : "", w.id, w.name, w.role ?? ""]),
+          );
+          process.stdout.write(`${table}\n`);
+        },
+        context: current
+          ? `Listed your workspaces; the active one (id ${current}) is marked \`current: true\`.`
+          : "Listed your workspaces; none is selected yet.",
+        hints: ["Select one with `speechifyai workspace use <id>`."],
+      });
     });
 
   workspace
@@ -59,13 +66,20 @@ export function registerWorkspaceCommand(program: Command): void {
     .description("Show the active workspace.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const mode = await outputMode(opts);
       const current = opts.workspace ?? (await readConfigFile())?.workspace_id;
-      if (opts.json) {
-        printJson({ workspace_id: current ?? null });
-        return;
-      }
-      logInfo(
-        current ? `Active workspace: ${current}` : "No workspace selected. Run `speechifyai workspace use <id>`.",
-      );
+      emit(mode, {
+        data: { workspace_id: current ?? null },
+        human: () =>
+          logInfo(
+            current ? `Active workspace: ${current}` : "No workspace selected. Run `speechifyai workspace use <id>`.",
+          ),
+        context: current
+          ? `The active workspace is ${current}; it's sent as X-Tenant-ID on console requests.`
+          : "No workspace is selected, so workspace-scoped commands will fail until one is chosen.",
+        hints: current
+          ? undefined
+          : ["Select one with `speechifyai workspace use <id>` (list: `speechifyai workspace list`)."],
+      });
     });
 }

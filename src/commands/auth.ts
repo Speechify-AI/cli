@@ -12,16 +12,41 @@ import { exchangeRefreshToken } from "../auth/firebase.js";
 import { createPkcePair } from "../auth/pkce.js";
 import { resolveAuth } from "../auth/session.js";
 import { clearConfigFile, readConfigFile, writeConfigFile } from "../configFile.js";
-import { CliError, ExitCode } from "../core/errors.js";
+import { createClient } from "../core/client.js";
+import { CliError, ExitCode, type InputField, NeedsInputError } from "../core/errors.js";
 import { createHttpClient } from "../core/http.js";
+import { listVoices } from "../core/voices.js";
 import { listWorkspaces } from "../core/workspaces.js";
 import type { GlobalOptions } from "../options.js";
-import { logInfo, logWarning, maskKey, printJson } from "../output.js";
+import { emit, logInfo, logWarning, maskKey, printJson } from "../output.js";
+import { isInteractive, outputMode } from "../runtime.js";
 
 interface LoginOptions extends GlobalOptions {
   refreshToken?: string;
   firebaseApiKey?: string;
 }
+
+/** Inputs `login` needs when the browser flow can't run (agent, CI, non-TTY). */
+const LOGIN_INPUTS: InputField[] = [
+  {
+    name: "refresh-token",
+    description: "Firebase refresh token for a console session (skips the browser flow)",
+    required: true,
+    flag: "--refresh-token <token>",
+    secret: true,
+  },
+  {
+    name: "firebase-api-key",
+    description: "Firebase web API key (or $SPEECHIFY_FB_API_KEY)",
+    flag: "--firebase-api-key <key>",
+  },
+  {
+    name: "api-key",
+    description: "Alternatively, a Speechify API key — stored for the public TTS surface (no workspace/console access)",
+    flag: "--api-key <key>",
+    secret: true,
+  },
+];
 
 interface Session {
   refreshToken: string;
@@ -84,11 +109,41 @@ async function obtainSession(opts: LoginOptions): Promise<Session> {
 export function registerAuthCommands(program: Command): void {
   program
     .command("login")
-    .description("Authenticate as a console user (browser flow, or --refresh-token).")
+    .description("Authenticate as a console user (browser flow, or --refresh-token), or store an API key (--api-key).")
     .option("--refresh-token <token>", "Firebase refresh token (skips the browser flow)")
     .option("--firebase-api-key <key>", "Firebase web API key (or $SPEECHIFY_FB_API_KEY)")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as LoginOptions;
+
+      // API-key login (TTS surface). The global --api-key, on `login`, means
+      // "validate and persist this key" — replacing any console session, since the
+      // resolver would otherwise outrank a stored key with a live console session.
+      const apiKey = opts.apiKey?.trim();
+      if (apiKey) {
+        const mode = await outputMode(opts);
+        const stored = (await readConfigFile()) ?? {};
+        const baseUrl = opts.baseUrl ?? process.env.SPEECHIFY_BASE_URL ?? stored.base_url;
+        const apiVersion = opts.apiVersion ?? process.env.SPEECHIFY_API_VERSION ?? stored.api_version;
+        // Validate against the public TTS surface before storing anything (so a bad
+        // key never clobbers an existing session).
+        await listVoices(createClient({ bearer: apiKey, baseUrl, apiVersion }));
+        await writeConfigFile({ api_key: apiKey, base_url: baseUrl, api_version: apiVersion });
+        const masked = maskKey(apiKey);
+        emit(mode, {
+          data: { status: "logged_in", mode: "api-key", key: masked },
+          human: () => logInfo(`Logged in with an API key: ${masked}`),
+          context:
+            "Stored an API key (replacing any previous console session). API keys reach the public TTS + scoped agent surface only — not workspace-scoped console endpoints.",
+          hints: ['Synthesize with `speechifyai say "text"`, or list voices with `speechifyai voices list`.'],
+        });
+        return;
+      }
+
+      // The default browser flow needs a human at a terminal. Under an agent / CI /
+      // non-TTY / --no-input, surface the non-interactive credential inputs instead.
+      if (!opts.refreshToken && !(await isInteractive(opts))) {
+        throw new NeedsInputError("login", LOGIN_INPUTS, ["refresh-token"]);
+      }
       const session = await obtainSession(opts);
       // Validate the credential (and normalize the refresh token) before storing.
       const refreshed = await exchangeRefreshToken(session.firebaseApiKey, session.refreshToken);
@@ -140,27 +195,45 @@ export function registerAuthCommands(program: Command): void {
     .description("Show how you're authenticated and the active workspace.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const mode = await outputMode(opts);
       const flagKey = opts.apiKey?.trim();
       const envKey = process.env.SPEECHIFY_API_KEY?.trim();
       if (flagKey || envKey) {
         const source = flagKey ? "flag" : "env";
         const key = flagKey || envKey || "";
-        if (opts.json) printJson({ mode: "api-key", source, key: maskKey(key) });
-        else logInfo(`Authenticated with an API key (${source}): ${maskKey(key)}`);
+        emit(mode, {
+          data: { mode: "api-key", source, key: maskKey(key) },
+          human: () => logInfo(`Authenticated with an API key (${source}): ${maskKey(key)}`),
+          context: `Authenticated with an API key from the ${source}. API keys reach the public TTS surface only, not workspace-scoped console endpoints.`,
+        });
         return;
       }
       const stored = await readConfigFile();
       if (stored?.refresh_token) {
-        if (opts.json) printJson({ mode: "console", workspace_id: stored.workspace_id ?? null });
-        else logInfo(`Logged in (console session). Workspace: ${stored.workspace_id ?? "(none selected)"}.`);
+        emit(mode, {
+          data: { mode: "console", workspace_id: stored.workspace_id ?? null },
+          human: () => logInfo(`Logged in (console session). Workspace: ${stored.workspace_id ?? "(none selected)"}.`),
+          context: stored.workspace_id
+            ? `Logged in as a console user, acting in workspace ${stored.workspace_id}.`
+            : "Logged in as a console user, but no workspace is selected yet.",
+          hints: stored.workspace_id ? undefined : ["Select a workspace with `speechifyai workspace use <id>`."],
+        });
         return;
       }
       if (stored?.api_key) {
-        if (opts.json) printJson({ mode: "api-key", source: "file", key: maskKey(stored.api_key) });
-        else logInfo(`Authenticated with a stored API key: ${maskKey(stored.api_key)}`);
+        const masked = maskKey(stored.api_key);
+        emit(mode, {
+          data: { mode: "api-key", source: "file", key: masked },
+          human: () => logInfo(`Authenticated with a stored API key: ${masked}`),
+          context: "Authenticated with a stored API key (public TTS surface only).",
+        });
         return;
       }
-      if (opts.json) printJson({ mode: null });
-      else logInfo("Not logged in. Run `speechifyai login`.");
+      emit(mode, {
+        data: { mode: null },
+        human: () => logInfo("Not logged in. Run `speechifyai login`."),
+        context: "Not authenticated. No API key (flag/env/stored) and no console session were found.",
+        hints: ["Run `speechifyai login` (console user), or pass --api-key / set $SPEECHIFY_API_KEY."],
+      });
     });
 }
