@@ -1,4 +1,4 @@
-# Speechify CLI
+# SpeechifyAI CLI
 
 > A command-line companion to the **Speechify developer console**. Log in as a
 > console user, select a workspace, and drive the API from the terminal.
@@ -20,7 +20,7 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
   the credential — the durable token never rides in a URL. Contract lives in
   `auth/callbackServer.ts`; pieces are `auth/pkce.ts` + `auth/cliAuth.ts`. Until
   the endpoints ship, the working path is
-  `speechify login --refresh-token <token> --firebase-api-key <key>`.
+  `speechifyai login --refresh-token <token> --firebase-api-key <key>`.
 - **Next (chosen):** API keys + usage, knowledge-base sync, conversations +
   analytics — all hit console (internal-audience) endpoints via `core/http.ts`.
 

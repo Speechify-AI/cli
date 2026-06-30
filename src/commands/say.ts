@@ -1,4 +1,4 @@
-// `speechify say` — synthesize text to an audio file (or stdout), optionally
+// `speechifyai say` — synthesize text to an audio file (or stdout), optionally
 // playing it. The headline command.
 import { writeFile } from "node:fs/promises";
 import { type Command, Option } from "commander";
@@ -36,7 +36,7 @@ export function registerSayCommand(program: Command): void {
   program
     .command("say [text]")
     .description("Synthesize speech from text and save (or play) the audio.")
-    .option("-v, --voice <id>", "voice id (see `speechify voices list`)", DEFAULT_VOICE)
+    .option("-v, --voice <id>", "voice id (see `speechifyai voices list`)", DEFAULT_VOICE)
     .addOption(new Option("--model <model>", "synthesis model").choices([...SPEECH_MODELS]))
     .addOption(
       new Option("-f, --format <format>", "output audio format").choices([...AUDIO_FORMATS]).default(DEFAULT_FORMAT),

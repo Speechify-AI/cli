@@ -19,7 +19,7 @@ function logStatus(transport: string, authed: boolean): void {
   const tools = authed
     ? "search_docs, list_voices, text_to_speech"
     : "search_docs (log in or set SPEECHIFY_API_KEY to enable list_voices + text_to_speech)";
-  process.stderr.write(`Speechify MCP server ready on ${transport}\nTools: ${tools}\n`);
+  process.stderr.write(`SpeechifyAI MCP server ready on ${transport}\nTools: ${tools}\n`);
 }
 
 export async function runMcp(opts: McpOptions): Promise<void> {

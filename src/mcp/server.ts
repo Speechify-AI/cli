@@ -1,4 +1,4 @@
-// Speechify MCP server — exposes docs search + TTS tools to MCP clients (Claude
+// SpeechifyAI MCP server — exposes docs search + TTS tools to MCP clients (Claude
 // Code, Cursor, Claude Desktop, …).
 //
 // `search_docs` needs no auth. The TTS tools resolve our auth (console Bearer +
@@ -24,7 +24,7 @@ const DOCS_MCP_URL = "https://docs.speechify.ai/_mcp/server";
  * it, and return the text blocks. No API key required.
  */
 async function callDocsSearch(query: string): Promise<string> {
-  const client = new Client({ name: "speechify-cli", version: __CLI_VERSION__ });
+  const client = new Client({ name: "speechifyai-cli", version: __CLI_VERSION__ });
   await client.connect(new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL)));
   try {
     const { tools } = await client.listTools();
@@ -56,11 +56,11 @@ export interface ServerOptions {
 }
 
 /**
- * Build the Speechify MCP server. `search_docs` is always registered; the
+ * Build the SpeechifyAI MCP server. `search_docs` is always registered; the
  * authenticated TTS tools register only when `authed` is true.
  */
 export function buildServer({ authed, authInput = {} }: ServerOptions): McpServer {
-  const server = new McpServer({ name: "speechify", version: __CLI_VERSION__ });
+  const server = new McpServer({ name: "speechifyai", version: __CLI_VERSION__ });
 
   server.registerTool(
     "search_docs",

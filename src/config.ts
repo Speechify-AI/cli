@@ -25,7 +25,7 @@ export interface ResolvedConfig {
 }
 
 const MISSING_KEY_MESSAGE =
-  "Not authenticated. Run `speechify auth login`, set the SPEECHIFY_API_KEY environment variable, " +
+  "Not authenticated. Run `speechifyai auth login`, set the SPEECHIFY_API_KEY environment variable, " +
   "or pass --api-key. Create a key at https://console.speechify.ai.";
 
 // Treat empty/whitespace values (e.g. `export SPEECHIFY_API_KEY=`) as absent.

@@ -6,7 +6,7 @@
 import { CliError, ExitCode } from "../core/errors.js";
 
 /** Stable identifier for this public client; lets the console scope CLI sessions. */
-export const CLI_CLIENT_ID = "speechify-cli";
+export const CLI_CLIENT_ID = "speechifyai-cli";
 
 export interface ExchangeParams {
   code: string;

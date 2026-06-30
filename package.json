@@ -1,11 +1,11 @@
 {
-  "name": "@speechify/cli",
+  "name": "@speechifyai/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "Speechify command-line companion to the developer console — synthesize speech and manage voices from your terminal.",
+  "description": "SpeechifyAI command-line companion to the developer console — synthesize speech and manage voices from your terminal.",
   "type": "module",
   "bin": {
-    "speechify": "./dist/bin.js"
+    "speechifyai": "./dist/bin.js"
   },
   "files": ["dist"],
   "engines": {

@@ -1,8 +1,8 @@
-// `speechify login | logout | whoami` — console-user authentication.
+// `speechifyai login | logout | whoami` — console-user authentication.
 //
 // Default login is a browser flow (opens the console, captures a Firebase refresh
 // token via a localhost callback). Until the console `/cli/login` page ships, the
-// working path is `speechify login --refresh-token <token>` (with the Firebase web
+// working path is `speechifyai login --refresh-token <token>` (with the Firebase web
 // API key via --firebase-api-key or $SPEECHIFY_FB_API_KEY).
 import type { Command } from "commander";
 import { openBrowser } from "../auth/browser.js";
@@ -50,7 +50,7 @@ async function browserLogin(): Promise<Session> {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "unknown error";
       throw new CliError(
-        `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechify login --refresh-token <token>\` for now.`,
+        `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechifyai login --refresh-token <token>\` for now.`,
         { exitCode: ExitCode.UNAVAILABLE, code: "browser_login_failed", cause: err },
       );
     }
@@ -122,7 +122,7 @@ export function registerAuthCommands(program: Command): void {
       logInfo("Logged in.");
       if (selected) logInfo(`Workspace: ${selected.name} (${selected.id}).`);
       else if (workspaces.length === 0) logWarning("You don't belong to any workspaces yet.");
-      else logInfo("Select a workspace: speechify workspace use <id>  (list: speechify workspace list).");
+      else logInfo("Select a workspace: speechifyai workspace use <id>  (list: speechifyai workspace list).");
     });
 
   program
@@ -161,6 +161,6 @@ export function registerAuthCommands(program: Command): void {
         return;
       }
       if (opts.json) printJson({ mode: null });
-      else logInfo("Not logged in. Run `speechify login`.");
+      else logInfo("Not logged in. Run `speechifyai login`.");
     });
 }

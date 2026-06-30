@@ -1,4 +1,4 @@
-# Speechify CLI
+# SpeechifyAI CLI
 
 The command-line companion to the [Speechify developer console](https://console.speechify.ai).
 Log in as a console user, pick a workspace, then drive the API from your terminal.
@@ -16,11 +16,11 @@ as the web console. The durable credential is a Firebase refresh token, exchange
 for short-lived ID tokens automatically.
 
 ```bash
-speechify login                 # browser sign-in (see the note below)
-speechify workspace list        # workspaces you belong to
-speechify workspace use ws_…    # select the active workspace
-speechify whoami                # how you're authed + active workspace
-speechify logout
+speechifyai login                 # browser sign-in (see the note below)
+speechifyai workspace list        # workspaces you belong to
+speechifyai workspace use ws_…    # select the active workspace
+speechifyai whoami                # how you're authed + active workspace
+speechifyai logout
 ```
 
 > ⚠️ **Browser login depends on console-side `/cli/login` + `/cli/token`
@@ -30,7 +30,7 @@ speechify logout
 > appears in a URL. Until the console endpoints ship, log in with a Firebase
 > refresh token directly:
 > ```bash
-> speechify login --refresh-token <token> --firebase-api-key <fb_web_api_key>
+> speechifyai login --refresh-token <token> --firebase-api-key <fb_web_api_key>
 > # or: export SPEECHIFY_FB_API_KEY=<fb_web_api_key>
 > ```
 
@@ -43,15 +43,15 @@ Credential precedence per run: **`--api-key` → console session → stored API 
 ## `say`
 
 ```bash
-speechify say "Text to speak" \
+speechifyai say "Text to speak" \
   --voice henry \           # default: george
   --format wav \            # wav | mp3 | ogg | aac | pcm (default mp3)
   --language en-US \
   --out narration.wav \     # default ./speech.<format>; "-" streams to stdout
   --play                    # play after synthesis
 
-echo "from a pipe" | speechify say -        # read text from stdin
-speechify voices list                       # browse voices
+echo "from a pipe" | speechifyai say -        # read text from stdin
+speechifyai voices list                       # browse voices
 ```
 
 Add `--json` to any command for machine-readable stdout (human status goes to
@@ -66,12 +66,12 @@ endpoints the typed commands don't cover yet. It reuses your session, so it send
 the console Bearer **and** `X-Tenant-ID` (or an API key) automatically.
 
 ```bash
-speechify api /v1/voices                       # GET, pretty-printed JSON
-speechify api /v1/voices -q limit=10 -i        # query params; -i adds status + headers
-speechify api /v1/audio/speech \
+speechifyai api /v1/voices                       # GET, pretty-printed JSON
+speechifyai api /v1/voices -q limit=10 -i        # query params; -i adds status + headers
+speechifyai api /v1/audio/speech \
   -f input="hello" -f voice_id=george          # repeatable -f builds a JSON body (implies POST)
-speechify api /v1/x -X POST -d @body.json      # raw body from @file, or - for stdin
-speechify api /v1/x -H "X-Debug: 1"            # extra headers
+speechifyai api /v1/x -X POST -d @body.json      # raw body from @file, or - for stdin
+speechifyai api /v1/x -H "X-Debug: 1"            # extra headers
 ```
 
 The response body is written to stdout (pretty-printed when JSON); a non-2xx
@@ -81,7 +81,7 @@ full `https://…` endpoint is used as-is.
 
 ## MCP server
 
-`speechify mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+`speechifyai mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
 directly. Tools:
 
@@ -91,8 +91,8 @@ directly. Tools:
   *(requires a session or API key)*
 
 ```bash
-speechify mcp                      # serve over stdio (the usual MCP transport)
-speechify mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
+speechifyai mcp                      # serve over stdio (the usual MCP transport)
+speechifyai mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
 ```
 
 Auth is resolved **per tool call**, so a long-running server keeps working as
@@ -101,13 +101,13 @@ session (or API key) is available; otherwise just `search_docs` is exposed.
 
 ### Install into a client
 
-`speechify mcp install` writes the server into a client's MCP config for you:
+`speechifyai mcp install` writes the server into a client's MCP config for you:
 
 ```bash
-speechify mcp install --all                       # every detected client
-speechify mcp install --client claude-code cursor # specific clients
-speechify mcp install --print                     # print the config block, write nothing
-speechify mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechifyai mcp install --all                       # every detected client
+speechifyai mcp install --client claude-code cursor # specific clients
+speechifyai mcp install --print                     # print the config block, write nothing
+speechifyai mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
 ```
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
@@ -126,7 +126,7 @@ on your `PATH`):
 }
 ```
 
-Run `speechify mcp install --print` to see the exact command for your setup — until
+Run `speechifyai mcp install --print` to see the exact command for your setup — until
 the CLI is published, it spawns the running binary by absolute path.
 
 ## Development

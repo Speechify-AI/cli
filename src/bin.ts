@@ -12,8 +12,8 @@ import { normalizeError } from "./core/errors.js";
 function buildProgram(): Command {
   const program = new Command();
   program
-    .name("speechify")
-    .description("Speechify command-line companion to the developer console.")
+    .name("speechifyai")
+    .description("SpeechifyAI command-line companion to the developer console.")
     .version(__CLI_VERSION__, "-V, --version", "print the CLI version")
     .option("--api-key <key>", "Speechify API key (overrides login / $SPEECHIFY_API_KEY)")
     .option("--workspace <id>", "act in this workspace for one command (overrides the selected one)")

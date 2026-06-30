@@ -1,4 +1,4 @@
-// `speechify voices list` — the voice catalog (built-in + cloned).
+// `speechifyai voices list` — the voice catalog (built-in + cloned).
 import type { Command } from "commander";
 import { requireWorkspace, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";

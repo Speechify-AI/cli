@@ -9,7 +9,7 @@ import { CliError } from "./core/errors.js";
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "speechify-cli-test-"));
+  dir = await mkdtemp(join(tmpdir(), "speechifyai-cli-test-"));
   // Redirect the config dir into a temp location and clear inherited env.
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);

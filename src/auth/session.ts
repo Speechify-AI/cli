@@ -74,7 +74,7 @@ async function getValidIdToken(stored: StoredConfig): Promise<string> {
   const apiKey = clean(stored.firebase_api_key) ?? clean(process.env[FB_API_KEY_ENV]);
   const refreshToken = clean(stored.refresh_token);
   if (!apiKey || !refreshToken) {
-    throw new CliError("Console session is incomplete. Run `speechify login` again.", {
+    throw new CliError("Console session is incomplete. Run `speechifyai login` again.", {
       exitCode: ExitCode.CONFIG,
       code: "not_authenticated",
     });
@@ -119,7 +119,7 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
     return { bearer: storedKey, baseUrl, apiVersion, mode: "api-key" };
   }
 
-  throw new CliError("Not authenticated. Run `speechify login`.", {
+  throw new CliError("Not authenticated. Run `speechifyai login`.", {
     exitCode: ExitCode.CONFIG,
     code: "not_authenticated",
   });
@@ -129,7 +129,7 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
 export function requireWorkspace(auth: AuthContext): string {
   if (auth.mode === "console" && !auth.tenantId) {
     throw new CliError(
-      "No workspace selected. Run `speechify workspace use <id>` (list them with `speechify workspace list`).",
+      "No workspace selected. Run `speechifyai workspace use <id>` (list them with `speechifyai workspace list`).",
       { exitCode: ExitCode.CONFIG, code: "no_workspace" },
     );
   }

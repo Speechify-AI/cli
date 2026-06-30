@@ -22,11 +22,11 @@ describe("serverEntry", () => {
 });
 
 describe("mergeConfig", () => {
-  it("adds the speechify server while preserving existing servers", () => {
+  it("adds the speechifyai server while preserving existing servers", () => {
     const existing = { mcpServers: { other: { command: "x" } }, unrelated: true };
-    const merged = mergeConfig(existing, "mcpServers", { command: "speechify" });
+    const merged = mergeConfig(existing, "mcpServers", { command: "speechifyai" });
     expect(merged).toEqual({
-      mcpServers: { other: { command: "x" }, speechify: { command: "speechify" } },
+      mcpServers: { other: { command: "x" }, speechifyai: { command: "speechifyai" } },
       unrelated: true,
     });
   });
@@ -38,7 +38,7 @@ describe("mergeConfig", () => {
   });
 
   it("creates the servers key when absent", () => {
-    expect(mergeConfig({}, "servers", { command: "z" })).toEqual({ servers: { speechify: { command: "z" } } });
+    expect(mergeConfig({}, "servers", { command: "z" })).toEqual({ servers: { speechifyai: { command: "z" } } });
   });
 });
 
@@ -53,7 +53,7 @@ describe("writeClientConfig", () => {
   });
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "speechify-mcp-install-"));
+    dir = await mkdtemp(join(tmpdir(), "speechifyai-mcp-install-"));
   });
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -61,24 +61,24 @@ describe("writeClientConfig", () => {
 
   it("writes a fresh config (creating parent dirs)", async () => {
     const configPath = join(dir, "nested", "config.json");
-    const status = await writeClientConfig(client(configPath), { command: "speechify" });
+    const status = await writeClientConfig(client(configPath), { command: "speechifyai" });
     expect(status).toBe("installed");
     const written = JSON.parse(await readFile(configPath, "utf8"));
-    expect(written).toEqual({ mcpServers: { speechify: { command: "speechify" } } });
+    expect(written).toEqual({ mcpServers: { speechifyai: { command: "speechifyai" } } });
   });
 
   it("merges into an existing config, preserving other servers", async () => {
     const configPath = join(dir, "config.json");
     await writeFile(configPath, JSON.stringify({ mcpServers: { other: { command: "x" } } }));
-    await writeClientConfig(client(configPath), { command: "speechify" });
+    await writeClientConfig(client(configPath), { command: "speechifyai" });
     const written = JSON.parse(await readFile(configPath, "utf8"));
-    expect(written.mcpServers).toEqual({ other: { command: "x" }, speechify: { command: "speechify" } });
+    expect(written.mcpServers).toEqual({ other: { command: "x" }, speechifyai: { command: "speechifyai" } });
   });
 
   it("refuses to clobber an unparsable config", async () => {
     const configPath = join(dir, "config.json");
     await writeFile(configPath, "{ not: valid json, // comment\n}");
-    const status = await writeClientConfig(client(configPath), { command: "speechify" });
+    const status = await writeClientConfig(client(configPath), { command: "speechifyai" });
     expect(status).toBe("skipped-unparsable");
     expect(await readFile(configPath, "utf8")).toBe("{ not: valid json, // comment\n}");
   });

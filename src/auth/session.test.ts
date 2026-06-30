@@ -9,7 +9,7 @@ import { DEFAULT_BASE_URL, requireWorkspace, resetIdTokenCache, resolveAuth } fr
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "speechify-cli-session-"));
+  dir = await mkdtemp(join(tmpdir(), "speechifyai-cli-session-"));
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   vi.stubEnv("SPEECHIFY_API_KEY", "");
