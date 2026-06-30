@@ -79,7 +79,7 @@ function readApiEnvelope(body: unknown): ApiEnvelope {
   };
 }
 
-function exitCodeForStatus(status: number | undefined): number {
+export function exitCodeForStatus(status: number | undefined): number {
   if (status === undefined) return ExitCode.GENERIC;
   if (status === 401 || status === 403) return ExitCode.NO_PERM;
   if (status === 429) return ExitCode.TEMP_FAIL;

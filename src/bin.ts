@@ -1,7 +1,9 @@
 // Entry point. Assembles the commander program (auth, say, voices) and routes all
 // failures through one normalizer so exit codes and the error shape are uniform.
 import { Command } from "commander";
+import { registerApiCommand } from "./commands/api.js";
 import { registerAuthCommands } from "./commands/auth.js";
+import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSayCommand } from "./commands/say.js";
 import { registerVoicesCommand } from "./commands/voices.js";
 import { registerWorkspaceCommand } from "./commands/workspace.js";
@@ -23,6 +25,8 @@ function buildProgram(): Command {
   registerWorkspaceCommand(program);
   registerSayCommand(program);
   registerVoicesCommand(program);
+  registerApiCommand(program);
+  registerMcpCommand(program);
 
   return program;
 }

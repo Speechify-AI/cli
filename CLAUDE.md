@@ -12,7 +12,7 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
 ## Status
 
 - **Works today:** `login` / `logout` / `whoami`, `workspace list|use|current`,
-  `say`, `voices list`.
+  `say`, `voices list`, `api` (gh-style raw passthrough), `mcp` (MCP server).
 - **Blocked (backend gap):** a complete browser SSO `login` needs a console-side
   `/cli/login` page that redirects the Firebase refresh token back to the CLI's
   localhost callback — **it doesn't exist yet**. The callback server/CSRF/browser
@@ -53,7 +53,10 @@ src/
     client.ts       @speechify/api SDK client (TTS), fed the session bearer + tenant
     errors.ts       CliError + normalizeError + apiErrorFromResponse; sysexits codes
     speech.ts / voices.ts / workspaces.ts   service layer
-  commands/         thin adapters over core/ (auth, workspace, say, voices)
+  mcp/
+    server.ts       buildServer() → MCP tools (search_docs + authed list_voices/text_to_speech)
+    run.ts          stdio / streamable-HTTP transport wiring
+  commands/         thin adapters over core/ (auth, workspace, say, voices, api, mcp)
   configFile.ts     ~/.config/speechify/config.json (refresh_token, firebase_api_key, cached id_token+expiry, workspace_id)
   output.ts io.ts options.ts
 ```
