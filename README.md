@@ -35,10 +35,24 @@ speechifyai logout
 > ```
 
 **API-key mode (TTS only).** For the public text-to-speech surface you can skip
-console login entirely and use an API key — `--api-key` or `SPEECHIFY_API_KEY`.
+console login entirely and use an API key — per-run via `--api-key` /
+`SPEECHIFY_API_KEY`, or persist one to the keychain:
+
+```bash
+speechifyai login --api-key sk_…   # validates the key, stores it, switches off any console session
+```
+
 This path can't reach workspace-scoped features (keys, usage, agents).
 
 Credential precedence per run: **`--api-key` → console session → stored API key.**
+
+**Where credentials live.** The session is stored in your **OS keychain**
+(Keychain on macOS, Credential Manager on Windows, Secret Service/libsecret on
+Linux) under the service `speechifyai-cli`. On hosts without a keychain backend
+(many headless/CI boxes) it falls back to an **AES-256-GCM encrypted file** at
+`~/.config/speechify/credentials.enc` (`0600`). A pre-existing plaintext
+`config.json` is migrated into the keychain on first use and then removed.
+`speechifyai logout` wipes all of them.
 
 ## `say`
 
@@ -58,6 +72,26 @@ Add `--json` to any command for machine-readable stdout (human status goes to
 stderr, so stdout stays pipe-clean). `--workspace ws_…` overrides the active
 workspace for one command. Exit codes follow sysexits: `78` config/auth-missing,
 `77` auth, `75` rate-limited, `65` bad input, `69` upstream.
+
+### Agent-friendly output
+
+When run inside an AI agent (Claude Code, Cursor, Codex, …) the CLI auto-switches
+to **agent mode**: stdout becomes JSON wrapped with explanatory `context` and
+next-step `hints` (`{ "ok": true, "data": …, "context": …, "hints": […] }`).
+`--agent-friendly` forces it anywhere; `--json` always wins and stays a bare
+machine payload so existing pipes don't change. Override detection with
+`SPEECHIFY_OUTPUT=human|json|agent`.
+
+When a required input is missing and the CLI can't prompt (agent, CI, non-TTY, or
+`--no-input`), it returns a structured **needs-input** spec on stdout and exits
+with code **`2`** instead of a generic error — so an agent can read the `inputs`
+list, supply them as flags, and re-invoke:
+
+```bash
+$ speechifyai say --json < /dev/null
+{ "ok": false, "needsInput": true, "command": "say", "missing": ["text"], "inputs": [ … ] }
+# exit code 2
+```
 
 ## `api`
 

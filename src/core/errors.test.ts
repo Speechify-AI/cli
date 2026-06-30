@@ -1,6 +1,24 @@
 import { SpeechifyError } from "@speechify/api";
 import { describe, expect, it } from "vitest";
-import { CliError, ExitCode, normalizeError } from "./errors.js";
+import { CliError, ExitCode, NeedsInputError, normalizeError } from "./errors.js";
+
+describe("NeedsInputError", () => {
+  it("carries exit code 2 and the structured spec", () => {
+    const err = new NeedsInputError(
+      "say",
+      [{ name: "text", description: "Text to synthesize", required: true, flag: "<text>" }],
+      ["text"],
+    );
+    expect(err.exitCode).toBe(2);
+    expect(err.exitCode).toBe(ExitCode.NEEDS_INPUT);
+    expect(err.name).toBe("NeedsInputError");
+    expect(err.command).toBe("say");
+    expect(err.missing).toEqual(["text"]);
+    expect(err.fields[0]).toMatchObject({ name: "text", required: true });
+    // It is NOT a CliError, so the fatal handler can special-case it.
+    expect(err).not.toBeInstanceOf(CliError);
+  });
+});
 
 describe("normalizeError", () => {
   it("passes a CliError's exit code and code through", () => {

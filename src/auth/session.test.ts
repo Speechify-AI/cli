@@ -2,6 +2,23 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Force the encrypted-file fallback (isolated to the temp config dir) so config
+// persistence never touches the real OS keychain during tests.
+vi.mock("@napi-rs/keyring", () => ({
+  Entry: class {
+    getPassword(): string | null {
+      throw new Error("no keychain backend");
+    }
+    setPassword(): void {
+      throw new Error("no keychain backend");
+    }
+    deletePassword(): boolean {
+      throw new Error("no keychain backend");
+    }
+  },
+}));
+
 import { readConfigFile, writeConfigFile } from "../configFile.js";
 import { CliError } from "../core/errors.js";
 import { DEFAULT_BASE_URL, requireWorkspace, resetIdTokenCache, resolveAuth } from "./session.js";

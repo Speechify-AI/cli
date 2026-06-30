@@ -1,8 +1,82 @@
 // Tiny output helpers. Human status goes to stderr so stdout stays clean for
 // piping (e.g. `--out -` or `--json`).
+import type { NeedsInputError } from "./core/errors.js";
+import type { OutputMode } from "./runtime.js";
 
 export function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+/** A successful result, renderable in any output mode. */
+export interface ResultSpec {
+  /** Canonical data — serialized verbatim in `json` mode, wrapped in `agent` mode. */
+  data: unknown;
+  /** Render a human-readable representation (stdout payload / stderr notes). */
+  human: () => void;
+  /** Plain-language explanation, included only in `agent` mode. */
+  context?: string;
+  /** Optional next-step hints for agents. */
+  hints?: string[];
+}
+
+/**
+ * Emit a successful result in the active output mode:
+ *   - human: call `spec.human()` (tables to stdout, notes to stderr).
+ *   - json:  write `spec.data` as a bare machine payload (no wrapper).
+ *   - agent: write `{ ok, data, context, hints }` so agents get the data plus
+ *            an explanation and next steps.
+ */
+export function emit(mode: OutputMode, spec: ResultSpec): void {
+  switch (mode) {
+    case "human":
+      spec.human();
+      return;
+    case "json":
+      printJson(spec.data);
+      return;
+    case "agent":
+      printJson({ ok: true, data: spec.data, context: spec.context, hints: spec.hints });
+      return;
+  }
+}
+
+/** The structured needs-input payload (json/agent mode), kept pure for testing. */
+export function needsInputPayload(err: NeedsInputError): {
+  ok: false;
+  needsInput: true;
+  command: string;
+  missing: string[];
+  inputs: NeedsInputError["fields"];
+  hint: string;
+} {
+  return {
+    ok: false,
+    needsInput: true,
+    command: err.command,
+    missing: err.missing,
+    inputs: err.fields,
+    hint: `Collect the inputs above (especially the required ones), then re-run \`speechifyai ${err.command}\` providing them as flags/arguments.`,
+  };
+}
+
+/**
+ * Render a "needs input" outcome. In human mode it lists the flags to pass (to
+ * stderr); in json/agent mode it writes the structured spec to stdout so a caller
+ * (or agent) can collect the inputs and re-invoke — never blocking on stdin.
+ */
+export function emitNeedsInput(err: NeedsInputError, mode: OutputMode): void {
+  if (mode === "human") {
+    let msg = `\n\`speechifyai ${err.command}\` needs input but isn't interactive (CI, agent, non-TTY, or --no-input).\nProvide:\n`;
+    for (const f of err.fields) {
+      const req = f.required ? " (required)" : "";
+      const def = f.default ? ` [default: ${f.default}]` : "";
+      const values = f.enum ? ` — one of: ${f.enum.join(", ")}` : "";
+      msg += `  • ${f.flag ?? f.name}${req}: ${f.description}${def}${values}\n`;
+    }
+    process.stderr.write(msg);
+    return;
+  }
+  printJson(needsInputPayload(err));
 }
 
 export function logInfo(message: string): void {

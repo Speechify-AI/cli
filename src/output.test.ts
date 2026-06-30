@@ -1,5 +1,84 @@
-import { describe, expect, it } from "vitest";
-import { formatBytes, maskKey, renderTable } from "./output.js";
+import { describe, expect, it, vi } from "vitest";
+import { NeedsInputError } from "./core/errors.js";
+import { emit, emitNeedsInput, formatBytes, maskKey, needsInputPayload, renderTable } from "./output.js";
+
+/** Capture everything written to stdout while `fn` runs. */
+function captureStdout(fn: () => void): string {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  try {
+    fn();
+  } finally {
+    spy.mockRestore();
+  }
+  return chunks.join("");
+}
+
+function captureStderr(fn: () => void): string {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk) => {
+    chunks.push(String(chunk));
+    return true;
+  });
+  try {
+    fn();
+  } finally {
+    spy.mockRestore();
+  }
+  return chunks.join("");
+}
+
+describe("emit", () => {
+  it("human mode calls human() and writes no JSON payload to stdout", () => {
+    const human = vi.fn();
+    const out = captureStdout(() => emit("human", { data: { a: 1 }, human }));
+    expect(human).toHaveBeenCalledOnce();
+    expect(out).toBe("");
+  });
+
+  it("json mode writes a bare data payload (no ok/context wrapper)", () => {
+    const out = captureStdout(() => emit("json", { data: { a: 1 }, human: () => {} }));
+    expect(JSON.parse(out)).toEqual({ a: 1 });
+  });
+
+  it("agent mode wraps data with ok/context/hints", () => {
+    const out = captureStdout(() => emit("agent", { data: { a: 1 }, human: () => {}, context: "ctx", hints: ["h"] }));
+    expect(JSON.parse(out)).toEqual({ ok: true, data: { a: 1 }, context: "ctx", hints: ["h"] });
+  });
+});
+
+describe("needsInput", () => {
+  const err = new NeedsInputError(
+    "say",
+    [{ name: "text", description: "Text to synthesize", required: true, flag: "<text>" }],
+    ["text"],
+  );
+
+  it("payload has the structured shape", () => {
+    const payload = needsInputPayload(err);
+    expect(payload).toMatchObject({ ok: false, needsInput: true, command: "say", missing: ["text"] });
+    expect(payload.inputs[0]).toMatchObject({ name: "text", required: true });
+    expect(payload.hint).toContain("speechifyai say");
+  });
+
+  it("json/agent mode writes the structured spec to stdout", () => {
+    const out = captureStdout(() => emitNeedsInput(err, "agent"));
+    expect(JSON.parse(out)).toMatchObject({ ok: false, needsInput: true, command: "say" });
+  });
+
+  it("human mode writes a flag list to stderr, nothing to stdout", () => {
+    let stderr = "";
+    const out = captureStdout(() => {
+      stderr = captureStderr(() => emitNeedsInput(err, "human"));
+    });
+    expect(out).toBe("");
+    expect(stderr).toContain("needs input");
+    expect(stderr).toContain("<text>");
+  });
+});
 
 describe("formatBytes", () => {
   it("formats across units", () => {
