@@ -103,10 +103,11 @@ export function cliInvocation(): CliInvocation {
 }
 
 /** Build the per-client server entry (pure). */
-export function serverEntry(opts: { needsType?: boolean; apiKey?: string; invocation: CliInvocation }): Record<
-  string,
-  unknown
-> {
+export function serverEntry(opts: {
+  needsType?: boolean;
+  apiKey?: string;
+  invocation: CliInvocation;
+}): Record<string, unknown> {
   const entry: Record<string, unknown> = { command: opts.invocation.command, args: opts.invocation.args };
   if (opts.apiKey) entry.env = { SPEECHIFY_API_KEY: opts.apiKey };
   if (opts.needsType) entry.type = "stdio";

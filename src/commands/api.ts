@@ -115,7 +115,9 @@ export function registerApiCommand(program: Command): void {
 
       if (opts.include) {
         process.stdout.write(`HTTP ${res.status} ${res.statusText}\n`);
-        res.headers.forEach((value, key) => process.stdout.write(`${key}: ${value}\n`));
+        res.headers.forEach((value, key) => {
+          process.stdout.write(`${key}: ${value}\n`);
+        });
         process.stdout.write("\n");
       }
       process.stdout.write(out.endsWith("\n") ? out : `${out}\n`);

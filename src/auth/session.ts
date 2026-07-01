@@ -4,7 +4,7 @@
 //   - console mode: a Firebase refresh token (stored) → short-lived ID token,
 //     with the selected workspace sent as X-Tenant-ID.
 //   - api-key mode: a raw sk_… key (flag/env/stored) for the public TTS surface.
-import { type StoredConfig, readConfigFile, writeConfigFile } from "../configFile.js";
+import { readConfigFile, type StoredConfig, writeConfigFile } from "../configFile.js";
 import { CliError, ExitCode } from "../core/errors.js";
 import { exchangeRefreshToken } from "./firebase.js";
 
