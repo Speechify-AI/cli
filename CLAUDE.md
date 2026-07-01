@@ -12,7 +12,8 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
 ## Status
 
 - **Works today:** `login` / `logout` / `whoami`, `workspace list|use|current`,
-  `say`, `voices list`, `api` (gh-style raw passthrough), `mcp` (MCP server).
+  `say`, `voices list`, `keys` (API-key management), `usage` (request log +
+  analytics), `api` (gh-style raw passthrough), `mcp` (MCP server).
 - **Blocked (backend gap):** a complete browser `login` needs console-side
   `/cli/login` (page) + `/cli/token` (exchange) endpoints — **they don't exist
   yet**. The CLI side is built + tested as a PKCE auth-code flow (RFC 8252/7636):
@@ -21,8 +22,8 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
   `auth/callbackServer.ts`; pieces are `auth/pkce.ts` + `auth/cliAuth.ts`. Until
   the endpoints ship, the working path is
   `speechifyai login --refresh-token <token> --firebase-api-key <key>`.
-- **Next (chosen):** API keys + usage, knowledge-base sync, conversations +
-  analytics — all hit console (internal-audience) endpoints via `core/http.ts`.
+- **Next (chosen):** knowledge-base sync, conversations + analytics — all hit
+  console (internal-audience) endpoints via `core/http.ts` (as `keys`/`usage` do).
 
 ## Auth model (important)
 

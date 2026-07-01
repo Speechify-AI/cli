@@ -3,10 +3,10 @@
 The command-line companion to the [Speechify developer console](https://console.speechify.ai).
 Log in as a console user, pick a workspace, then drive the API from your terminal.
 
-> **Status: early.** Auth + workspace foundation, `say`, `voices list`, a raw
-> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) server work today.
-> API-key management, usage, knowledge-base sync, and conversations are next.
-> Not yet published to npm — run from source (see [Development](#development)).
+> **Status: early.** Auth + workspace foundation, `say`, `voices list`,
+> [`keys`](#keys) and [`usage`](#usage), a raw [`api`](#api) passthrough, and an
+> [`mcp`](#mcp-server) server work today. Knowledge-base sync and conversations
+> are next. Not yet published to npm — run from source (see [Development](#development)).
 
 ## Authentication
 
@@ -92,6 +92,47 @@ $ speechifyai say --json < /dev/null
 { "ok": false, "needsInput": true, "command": "say", "missing": ["text"], "inputs": [ … ] }
 # exit code 2
 ```
+
+## `keys`
+
+Manage the workspace's API keys. **Only a console-user session can mint keys** —
+something an API-key-authed tool can't do — so this is one of the clearest reasons
+to log in as a console user. Requires a selected workspace.
+
+```bash
+speechifyai keys list                           # table of keys (secrets masked)
+speechifyai keys create ci --scope audio:all    # create; repeat --scope for more, omit for full access
+speechifyai keys get key_…                       # one key's metadata
+speechifyai keys update key_… --name renamed     # rename, and/or --scope … to replace scopes
+speechifyai keys revoke key_…                    # permanently revoke (aliases: rm, delete)
+```
+
+`create` prints the plaintext secret **once**, on stdout — pipe it straight out
+(`speechifyai keys create ci --json | jq -r .apiKey`); every later read shows it
+masked and it can't be recovered. Scopes are drawn from `audio:all`,
+`voices:{read,write,all}`, `agent:{read,write,all}`, and
+`conversation:{read,write,all}`.
+
+## `usage`
+
+Inspect workspace API usage — the per-request log and aggregate analytics.
+Requires a selected workspace and the `usage.view` permission (owner, admin, or
+billing admin).
+
+```bash
+speechifyai usage requests                        # one page of the request log, newest first
+speechifyai usage requests \
+  --method GET POST --status 200 500 \            # filters: method(s), status(es), route,
+  --path /v1/audio --min-latency 100              #   latency, principal, and time window
+speechifyai usage requests --all                  # follow the cursor across all pages (bounded)
+speechifyai usage analytics --granularity 1h      # totals, per-bucket series, and busiest routes
+```
+
+The request log defaults to the last 7 days (capped at 30) and returns one
+cursor-paginated page; `--json` exposes `nextCursor`/`hasMore` so you can page
+with `--cursor`, or pass `--all` to follow it for you. `analytics` (alias `stats`)
+returns window totals, a per-bucket time series with p50/p95/p99 latency, and the
+top routes.
 
 ## `api`
 
