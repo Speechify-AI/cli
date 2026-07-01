@@ -10,6 +10,7 @@ export type QueryParams = Record<string, string | number | boolean | undefined>;
 export interface HttpClient {
   get<T>(path: string, query?: QueryParams): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
+  patch<T>(path: string, body?: unknown): Promise<T>;
   del(path: string): Promise<void>;
 }
 
@@ -44,6 +45,18 @@ export function createHttpClient(auth: AuthContext, fetchImpl: typeof fetch = fe
       if (body !== undefined) requestHeaders["content-type"] = "application/json";
       const res = await fetchImpl(buildUrl(path), {
         method: "POST",
+        headers: requestHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) throw await apiErrorFromResponse(res);
+      if (res.status === 204) return undefined as T;
+      return (await res.json()) as T;
+    },
+    async patch<T>(path: string, body?: unknown): Promise<T> {
+      const requestHeaders = headers();
+      if (body !== undefined) requestHeaders["content-type"] = "application/json";
+      const res = await fetchImpl(buildUrl(path), {
+        method: "PATCH",
         headers: requestHeaders,
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });

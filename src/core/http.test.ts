@@ -44,4 +44,19 @@ describe("createHttpClient", () => {
     const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
     await expect(http.del("/v1/thing/1")).resolves.toBeUndefined();
   });
+
+  it("PATCH sends a JSON body with content-type and parses the response", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+      jsonResponse(200, { id: "1", name: "renamed" }),
+    );
+    const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
+
+    const out = await http.patch<{ id: string; name: string }>("/v1/api-keys/1", { name: "renamed" });
+    expect(out).toEqual({ id: "1", name: "renamed" });
+
+    const init = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(init.method).toBe("PATCH");
+    expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+    expect(init.body).toBe(JSON.stringify({ name: "renamed" }));
+  });
 });

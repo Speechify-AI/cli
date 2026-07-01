@@ -3,8 +3,10 @@
 import { Command } from "commander";
 import { registerApiCommand } from "./commands/api.js";
 import { registerAuthCommands } from "./commands/auth.js";
+import { registerKeysCommand } from "./commands/keys.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSayCommand } from "./commands/say.js";
+import { registerUsageCommand } from "./commands/usage.js";
 import { registerVoicesCommand } from "./commands/voices.js";
 import { registerWorkspaceCommand } from "./commands/workspace.js";
 import { NeedsInputError, normalizeError } from "./core/errors.js";
@@ -45,6 +47,8 @@ function buildProgram(): Command {
   registerWorkspaceCommand(program);
   registerSayCommand(program);
   registerVoicesCommand(program);
+  registerKeysCommand(program);
+  registerUsageCommand(program);
   registerApiCommand(program);
   registerMcpCommand(program);
 

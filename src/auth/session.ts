@@ -10,6 +10,11 @@ import { exchangeRefreshToken } from "./firebase.js";
 
 export const DEFAULT_BASE_URL = "https://api.speechify.ai";
 
+// The Speechify-Version date the internal-audience console endpoints (keys, usage)
+// were coded against. Sent as the `Speechify-Version` header when the user hasn't
+// pinned one, so responses match the shapes we parse. Console pins the same value.
+export const PINNED_API_VERSION = "2026-06-28";
+
 const API_KEY_ENV = "SPEECHIFY_API_KEY";
 const BASE_URL_ENV = "SPEECHIFY_BASE_URL";
 const API_VERSION_ENV = "SPEECHIFY_API_VERSION";
