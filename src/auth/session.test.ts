@@ -57,10 +57,16 @@ afterEach(async () => {
 });
 
 describe("resolveAuth", () => {
-  it("uses an explicit API key (api-key mode)", async () => {
+  it("uses an explicit API key (api-key mode) and records the flag source", async () => {
     const auth = await resolveAuth({ apiKey: "sk_flag" });
-    expect(auth).toMatchObject({ bearer: "sk_flag", mode: "api-key", baseUrl: DEFAULT_BASE_URL });
+    expect(auth).toMatchObject({ bearer: "sk_flag", mode: "api-key", baseUrl: DEFAULT_BASE_URL, keySource: "flag" });
     expect(auth.tenantId).toBeUndefined();
+  });
+
+  it("records the stored source for a keychain API key", async () => {
+    await writeConfigFile({ api_key: "sk_stored" });
+    const auth = await resolveAuth();
+    expect(auth).toMatchObject({ bearer: "sk_stored", mode: "api-key", keySource: "stored" });
   });
 
   it("mints an ID token from a stored console session and carries the workspace", async () => {
@@ -149,7 +155,7 @@ describe("resolveAuth", () => {
     vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
 
     const auth = await resolveAuth();
-    expect(auth).toMatchObject({ bearer: "sk_env", mode: "api-key" });
+    expect(auth).toMatchObject({ bearer: "sk_env", mode: "api-key", keySource: "env" });
   });
 
   it("preferConsole ignores a flag/env API key and resolves the stored console session", async () => {
@@ -165,6 +171,24 @@ describe("resolveAuth", () => {
 describe("requireConsole", () => {
   it("throws in api-key mode", () => {
     expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key" })).toThrow(CliError);
+  });
+
+  it("names $SPEECHIFY_API_KEY when the shadowing key came from the env", () => {
+    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "env" })).toThrow(
+      /\$SPEECHIFY_API_KEY — unset it/,
+    );
+  });
+
+  it("names --api-key when the shadowing key came from the flag", () => {
+    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "flag" })).toThrow(
+      /--api-key — drop the flag/,
+    );
+  });
+
+  it("suggests plain login for a stored key", () => {
+    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "stored" })).toThrow(
+      /Run `speechifyai login` to sign in/,
+    );
   });
 
   it("is a no-op in console mode", () => {

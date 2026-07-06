@@ -73,6 +73,14 @@ stderr, so stdout stays pipe-clean). `--workspace ws_…` overrides the active
 workspace for one command. Exit codes follow sysexits: `78` config/auth-missing,
 `77` auth, `75` rate-limited, `65` bad input, `69` upstream.
 
+Every network call waits at most **30 s** for the server to start responding
+(exit `69`, code `request_timeout`); override with `SPEECHIFY_TIMEOUT_MS`.
+
+**Piped stdin:** with an explicit `-` the CLI blocks until the pipe closes. When
+text is omitted and stdin merely *happens* to be a pipe (agents, CI), it waits at
+most ~2 s for the first byte before returning the structured needs-input error —
+so an idle inherited pipe can't hang the CLI. Slow producers should pass `-`.
+
 ### Agent-friendly output
 
 When run inside an AI agent (Claude Code, Cursor, Codex, …) the CLI auto-switches
@@ -170,9 +178,12 @@ speechifyai mcp                      # serve over stdio (the usual MCP transport
 speechifyai mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
 ```
 
-Auth is resolved **per tool call**, so a long-running server keeps working as
-short-lived ID tokens roll over. The authenticated tools register only when a
-session (or API key) is available; otherwise just `search_docs` is exposed.
+All three tools are always registered, so they stay discoverable to agents
+regardless of auth state. Auth is resolved **per tool call**: a long-running
+server keeps working as short-lived ID tokens roll over, and a server started
+before `speechifyai login` picks up the session the moment you log in — no
+restart. Calling an authenticated tool without a session returns a clear
+"run `speechifyai login`" error instead of the tool not existing.
 
 ### Install into a client
 

@@ -22,6 +22,9 @@ const FB_API_KEY_ENV = "SPEECHIFY_FB_API_KEY";
 
 export type AuthMode = "console" | "api-key";
 
+/** Where an api-key credential came from — used to tailor error guidance. */
+export type ApiKeySource = "flag" | "env" | "stored";
+
 export interface AuthContext {
   /** Firebase ID token (console) or API key (api-key) — sent as `Authorization: Bearer`. */
   bearer: string;
@@ -30,6 +33,8 @@ export interface AuthContext {
   baseUrl: string;
   apiVersion?: string;
   mode: AuthMode;
+  /** Set in api-key mode: which source supplied the key (flag/env/stored). */
+  keySource?: ApiKeySource;
 }
 
 export interface AuthInput {
@@ -112,9 +117,11 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
 
   // 1. Explicit API key (flag or env) — power-user / TTS-only path. Skipped when
   //    the caller explicitly wants the console session (the login bootstrap).
-  const explicitKey = input.preferConsole ? undefined : (clean(input.apiKey) ?? clean(process.env[API_KEY_ENV]));
+  const flagKey = input.preferConsole ? undefined : clean(input.apiKey);
+  const envKey = input.preferConsole ? undefined : clean(process.env[API_KEY_ENV]);
+  const explicitKey = flagKey ?? envKey;
   if (explicitKey) {
-    return { bearer: explicitKey, baseUrl, apiVersion, mode: "api-key" };
+    return { bearer: explicitKey, baseUrl, apiVersion, mode: "api-key", keySource: flagKey ? "flag" : "env" };
   }
   // 2. Console session (refresh token → ID token).
   if (clean(stored.refresh_token)) {
@@ -129,7 +136,7 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
   // 3. Stored API key (legacy login with a key).
   const storedKey = clean(stored.api_key);
   if (storedKey) {
-    return { bearer: storedKey, baseUrl, apiVersion, mode: "api-key" };
+    return { bearer: storedKey, baseUrl, apiVersion, mode: "api-key", keySource: "stored" };
   }
 
   throw new CliError("Not authenticated. Run `speechifyai login`.", {
@@ -142,14 +149,21 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
  * Guard for console-only commands (keys, usage, workspaces). An API key reaches
  * only the public TTS + scoped agent surface, so reject it here with a clear,
  * client-side message instead of letting the request fail with a raw 401/403.
+ * The fix depends on where the key came from — an env/flag key may be shadowing
+ * a perfectly good console session, so "log in" alone would mislead.
  */
 export function requireConsole(auth: AuthContext): void {
-  if (auth.mode !== "console") {
-    throw new CliError(
-      "This command needs a console session — an API key can't reach workspace-scoped console endpoints. Run `speechifyai login`.",
-      { exitCode: ExitCode.CONFIG, code: "requires_console" },
-    );
-  }
+  if (auth.mode === "console") return;
+  const fix =
+    auth.keySource === "env"
+      ? "The key came from $SPEECHIFY_API_KEY — unset it if you're already logged in as a console user, or run `speechifyai login`."
+      : auth.keySource === "flag"
+        ? "The key came from --api-key — drop the flag if you're already logged in as a console user, or run `speechifyai login`."
+        : "Run `speechifyai login` to sign in as a console user.";
+  throw new CliError(
+    `This command needs a console session — an API key can't reach workspace-scoped console endpoints. ${fix}`,
+    { exitCode: ExitCode.CONFIG, code: "requires_console" },
+  );
 }
 
 /** Guard for workspace-scoped commands: console mode requires a selected workspace. */

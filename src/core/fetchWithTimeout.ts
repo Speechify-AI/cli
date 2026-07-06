@@ -1,7 +1,13 @@
-// A single place to bound how long any network call may hang. Every fetch in the
-// CLI (the authed console client, the Firebase/console token exchanges, and the
-// raw `api` passthrough) goes through fetchWithTimeout; the @speechify/api SDK is
-// given the same budget via its own `timeoutInSeconds` (see core/client.ts).
+// A single place to bound how long any network call may wait for a response.
+// Every fetch in the CLI (the authed console client, the Firebase/console token
+// exchanges, and the raw `api` passthrough) goes through fetchWithTimeout; the
+// @speechify/api SDK is given the same budget via its own `timeoutInSeconds`
+// (see core/client.ts).
+//
+// Scope: the budget covers connection + response headers (time-to-first-response).
+// Once headers arrive the timer is cleared, so body reads (`res.json()`/`.text()`)
+// are NOT time-bounded — deliberate, since large audio downloads must be allowed
+// to finish. A server that sends headers then stalls the body can still hang.
 import { CliError, ExitCode } from "./errors.js";
 
 /** Default per-request network timeout (ms). Overridable via $SPEECHIFY_TIMEOUT_MS. */
@@ -25,10 +31,12 @@ export function resolveTimeoutSeconds(): number {
 }
 
 /**
- * fetch with a hard timeout. Aborts the request after `timeoutMs` and turns the
- * abort into a clear CliError (exit 69, EX_UNAVAILABLE) rather than a bare
- * AbortError. Any non-timeout failure (DNS, connection refused, …) is re-thrown
- * unchanged so the top-level normalizer handles it as before.
+ * fetch with a hard timeout on receiving the response headers. Aborts after
+ * `timeoutMs` if the server hasn't started responding, turning the abort into a
+ * clear CliError (exit 69, EX_UNAVAILABLE) rather than a bare AbortError. Any
+ * non-timeout failure (DNS, connection refused, …) is re-thrown unchanged so the
+ * top-level normalizer handles it as before. Body reads are not bounded (see the
+ * file header).
  */
 export async function fetchWithTimeout(
   input: string | URL,

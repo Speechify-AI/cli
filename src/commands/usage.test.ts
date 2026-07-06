@@ -21,6 +21,7 @@ vi.mock("../core/usage.js", async (importOriginal) => ({
   getRequestAnalytics: getRequestAnalyticsMock,
 }));
 
+import { resolveAuth } from "../auth/session.js";
 import { registerUsageCommand } from "./usage.js";
 
 function buildProgram(): Command {
@@ -118,7 +119,7 @@ describe("usage requests — invalid numeric flags", () => {
     expect(listRequestLogMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-numeric --status code", async () => {
+  it("rejects a non-numeric --status code before resolving auth", async () => {
     listRequestLogMock.mockResolvedValue({ entries: [], nextCursor: null, hasMore: false });
     const cap = silence();
     try {
@@ -129,6 +130,8 @@ describe("usage requests — invalid numeric flags", () => {
       cap.restore();
     }
     expect(listRequestLogMock).not.toHaveBeenCalled();
+    // Filters validate before the auth preamble — no keychain/network touch.
+    expect(vi.mocked(resolveAuth)).not.toHaveBeenCalled();
   });
 });
 

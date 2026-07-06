@@ -100,12 +100,14 @@ export function registerUsageCommand(program: Command): void {
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as RequestsOptions;
       const mode = await outputMode(opts);
-      const http = await consoleHttpClient(opts);
+      // Validate filters before resolving auth, so bad input fails fast without
+      // touching the keychain or network.
       const filters: RequestLogFilters = {
         ...toFilters(opts),
         cursor: opts.cursor,
         limit: opts.limit,
       };
+      const http = await consoleHttpClient(opts);
 
       let page = await listRequestLog(http, filters);
       const entries = [...page.entries];
@@ -157,8 +159,10 @@ export function registerUsageCommand(program: Command): void {
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as AnalyticsOptions;
       const mode = await outputMode(opts);
+      // Validate filters before resolving auth (same fail-fast rationale as above).
+      const filters = { ...toFilters(opts), granularity: opts.granularity };
       const http = await consoleHttpClient(opts);
-      const analytics = await getRequestAnalytics(http, { ...toFilters(opts), granularity: opts.granularity });
+      const analytics = await getRequestAnalytics(http, filters);
 
       emit(mode, {
         data: analytics,
