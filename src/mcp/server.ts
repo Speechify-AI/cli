@@ -1,10 +1,13 @@
 // SpeechifyAI MCP server — exposes docs search + TTS tools to MCP clients (Claude
 // Code, Cursor, Claude Desktop, …).
 //
-// `search_docs` needs no auth. The TTS tools resolve our auth (console Bearer +
-// workspace, or an API key) FRESH per call via resolveAuth(), so a long-running
-// server survives short-lived ID-token expiry — strictly better than holding one
-// token for the process lifetime.
+// All tools are always registered so they stay discoverable regardless of auth
+// state. `search_docs` needs no auth. The TTS tools resolve our auth (console
+// Bearer + workspace, or an API key) FRESH per call via resolveAuth(): a server
+// started before `speechifyai login` starts working the moment you log in — no
+// restart — and a short-lived ID token self-heals. When auth is missing, the call
+// surfaces a clear "run login" error (the MCP SDK returns the CliError message as
+// an isError tool result) rather than the tool silently not existing.
 import { writeFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -49,17 +52,15 @@ async function callDocsSearch(query: string): Promise<string> {
 }
 
 export interface ServerOptions {
-  /** Register the authenticated TTS tools (list_voices, text_to_speech). */
-  authed: boolean;
   /** Per-invocation auth overrides; resolveAuth() applies flag/env/stored precedence. */
   authInput?: AuthInput;
 }
 
 /**
- * Build the SpeechifyAI MCP server. `search_docs` is always registered; the
- * authenticated TTS tools register only when `authed` is true.
+ * Build the SpeechifyAI MCP server. All tools are always registered; the TTS tools
+ * resolve auth per call and surface a clear error when the caller isn't authed.
  */
-export function buildServer({ authed, authInput = {} }: ServerOptions): McpServer {
+export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
   const server = new McpServer({ name: "speechifyai", version: __CLI_VERSION__ });
 
   server.registerTool(
@@ -72,81 +73,85 @@ export function buildServer({ authed, authInput = {} }: ServerOptions): McpServe
     async ({ query }) => ({ content: [{ type: "text", text: await callDocsSearch(query) }] }),
   );
 
-  if (authed) {
-    // Resolve auth + a TTS client per call so the ID token stays fresh.
-    const ttsClient = async () => {
-      const auth = await resolveAuth(authInput);
-      requireWorkspace(auth);
-      return createClient({
-        bearer: auth.bearer,
-        tenantId: auth.tenantId,
-        apiVersion: auth.apiVersion,
-        baseUrl: auth.baseUrl,
+  // Resolve auth + a TTS client per call so the ID token stays fresh and a login
+  // that happens after the server starts is picked up without a restart. On
+  // failure this throws a CliError whose message the SDK returns as a tool error.
+  const ttsClient = async () => {
+    const auth = await resolveAuth(authInput);
+    requireWorkspace(auth);
+    return createClient({
+      bearer: auth.bearer,
+      tenantId: auth.tenantId,
+      apiVersion: auth.apiVersion,
+      baseUrl: auth.baseUrl,
+    });
+  };
+
+  server.registerTool(
+    "list_voices",
+    {
+      description:
+        "List the Speechify voices available to the authenticated account. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+      inputSchema: {},
+    },
+    async () => {
+      const voices = await listVoices(await ttsClient());
+      return { content: [{ type: "text", text: JSON.stringify(voices, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "text_to_speech",
+    {
+      description:
+        "Synthesize speech audio from text or SSML using Speechify. Returns the audio inline, or writes it to outputPath when provided. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+      inputSchema: {
+        input: z.string().describe("Plain text or SSML to synthesize"),
+        voiceId: z
+          .string()
+          .default(DEFAULT_VOICE)
+          .describe(`Voice id (see list_voices). Defaults to '${DEFAULT_VOICE}'.`),
+        model: z.enum(SPEECH_MODELS).optional().describe("Synthesis model"),
+        audioFormat: z.enum(AUDIO_FORMATS).default("mp3").describe("Output audio format"),
+        language: z.string().optional().describe("Input language as BCP-47 (e.g. en-US)"),
+        outputPath: z
+          .string()
+          .optional()
+          .describe("If set, write the audio to this file and return the path instead of inline audio."),
+      },
+    },
+    async ({ input, voiceId, model, audioFormat, language, outputPath }) => {
+      const result = await synthesize(await ttsClient(), {
+        input,
+        voiceId,
+        model,
+        format: audioFormat,
+        language,
       });
-    };
 
-    server.registerTool(
-      "list_voices",
-      { description: "List the Speechify voices available to the authenticated account.", inputSchema: {} },
-      async () => {
-        const voices = await listVoices(await ttsClient());
-        return { content: [{ type: "text", text: JSON.stringify(voices, null, 2) }] };
-      },
-    );
-
-    server.registerTool(
-      "text_to_speech",
-      {
-        description:
-          "Synthesize speech audio from text or SSML using Speechify. Returns the audio inline, or writes it to outputPath when provided.",
-        inputSchema: {
-          input: z.string().describe("Plain text or SSML to synthesize"),
-          voiceId: z
-            .string()
-            .default(DEFAULT_VOICE)
-            .describe(`Voice id (see list_voices). Defaults to '${DEFAULT_VOICE}'.`),
-          model: z.enum(SPEECH_MODELS).optional().describe("Synthesis model"),
-          audioFormat: z.enum(AUDIO_FORMATS).default("mp3").describe("Output audio format"),
-          language: z.string().optional().describe("Input language as BCP-47 (e.g. en-US)"),
-          outputPath: z
-            .string()
-            .optional()
-            .describe("If set, write the audio to this file and return the path instead of inline audio."),
-        },
-      },
-      async ({ input, voiceId, model, audioFormat, language, outputPath }) => {
-        const result = await synthesize(await ttsClient(), {
-          input,
-          voiceId,
-          model,
-          format: audioFormat,
-          language,
-        });
-
-        if (outputPath) {
-          await writeFile(outputPath, result.audio);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Wrote ${result.audio.length} bytes (${result.format}) to ${outputPath}. Billable characters: ${result.billableCharacters}.`,
-              },
-            ],
-          };
-        }
-
+      if (outputPath) {
+        await writeFile(outputPath, result.audio);
         return {
           content: [
-            { type: "audio", data: result.audio.toString("base64"), mimeType: AUDIO_MIME[result.format] },
             {
               type: "text",
-              text: `Synthesized ${result.audio.length} bytes (${result.format}). Billable characters: ${result.billableCharacters}.`,
+              text: `Wrote ${result.audio.length} bytes (${result.format}) to ${outputPath}. Billable characters: ${result.billableCharacters}.`,
             },
           ],
         };
-      },
-    );
-  }
+      }
+
+      return {
+        content: [
+          { type: "audio", data: result.audio.toString("base64"), mimeType: AUDIO_MIME[result.format] },
+          {
+            type: "text",
+            text: `Synthesized ${result.audio.length} bytes (${result.format}). Billable characters: ${result.billableCharacters}.`,
+          },
+        ],
+      };
+    },
+  );
 
   return server;
 }

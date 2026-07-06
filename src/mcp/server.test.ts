@@ -25,6 +25,8 @@ vi.mock("../auth/session.js", async (importOriginal) => {
   };
 });
 
+import { resolveAuth } from "../auth/session.js";
+import { CliError, ExitCode } from "../core/errors.js";
 import { buildServer } from "./server.js";
 
 /** Pull the first text block's text out of a tool result (throws if absent). */
@@ -35,8 +37,8 @@ function firstText(res: unknown): string {
   return text;
 }
 
-async function connect(authed: boolean): Promise<Client> {
-  const server = buildServer({ authed, authInput: {} });
+async function connect(): Promise<Client> {
+  const server = buildServer({ authInput: {} });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client({ name: "test", version: "1" });
@@ -50,17 +52,24 @@ beforeEach(() => {
 });
 
 describe("buildServer tool registration", () => {
-  it("registers only search_docs when not authed", async () => {
-    const client = await connect(false);
+  it("always registers all three tools, regardless of auth state", async () => {
+    const client = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(["search_docs"]);
+    expect(names).toEqual(["list_voices", "search_docs", "text_to_speech"]);
     await client.close();
   });
 
-  it("registers the TTS tools when authed", async () => {
-    const client = await connect(true);
-    const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(["list_voices", "search_docs", "text_to_speech"]);
+  it("returns a clean, actionable error when a TTS tool is called unauthenticated", async () => {
+    vi.mocked(resolveAuth).mockRejectedValueOnce(
+      new CliError("Not authenticated. Run `speechifyai login`.", {
+        exitCode: ExitCode.CONFIG,
+        code: "not_authenticated",
+      }),
+    );
+    const client = await connect();
+    const res = await client.callTool({ name: "list_voices", arguments: {} });
+    expect(res.isError).toBe(true);
+    expect(firstText(res)).toContain("speechifyai login");
     await client.close();
   });
 });
@@ -78,7 +87,7 @@ describe("list_voices tool", () => {
         tags: [],
       },
     ]);
-    const client = await connect(true);
+    const client = await connect();
     const res = await client.callTool({ name: "list_voices", arguments: {} });
     expect(JSON.parse(firstText(res))).toEqual([
       {
@@ -105,7 +114,7 @@ describe("text_to_speech tool", () => {
       audio_format: "mp3",
       billable_characters_count: 5,
     });
-    const client = await connect(true);
+    const client = await connect();
     const res = await client.callTool({
       name: "text_to_speech",
       arguments: { input: "hello", voiceId: "george", outputPath: outPath },
@@ -121,7 +130,7 @@ describe("text_to_speech tool", () => {
       audio_format: "mp3",
       billable_characters_count: 3,
     });
-    const client = await connect(true);
+    const client = await connect();
     const res = await client.callTool({ name: "text_to_speech", arguments: { input: "hi" } });
     const audio = (res.content as Array<{ type: string; data?: string; mimeType?: string }>).find(
       (c) => c.type === "audio",
