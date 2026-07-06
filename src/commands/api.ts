@@ -7,6 +7,7 @@ import type { Command } from "commander";
 import type { AuthContext } from "../auth/session.js";
 import { resolveAuth } from "../auth/session.js";
 import { CliError, ExitCode, exitCodeForStatus } from "../core/errors.js";
+import { fetchWithTimeout } from "../core/fetchWithTimeout.js";
 import { readStdin } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { logWarning } from "../output.js";
@@ -102,7 +103,7 @@ export function registerApiCommand(program: Command): void {
         workspaceId: opts.workspace,
       });
       const req = await buildApiRequest(auth, endpoint, opts);
-      const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+      const res = await fetchWithTimeout(req.url, { method: req.method, headers: req.headers, body: req.body });
       const text = await res.text();
 
       // Pretty-print JSON bodies; pass anything else through verbatim.

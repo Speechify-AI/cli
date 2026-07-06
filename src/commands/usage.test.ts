@@ -105,6 +105,33 @@ describe("usage requests", () => {
   });
 });
 
+describe("usage requests — invalid numeric flags", () => {
+  it("rejects a non-numeric --limit during parsing, before calling the service", async () => {
+    const cap = silence();
+    try {
+      await expect(
+        buildProgram().parseAsync(["node", "speechifyai", "usage", "requests", "--limit", "abc"]),
+      ).rejects.toMatchObject({ code: "invalid_argument", exitCode: 65 });
+    } finally {
+      cap.restore();
+    }
+    expect(listRequestLogMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-numeric --status code", async () => {
+    listRequestLogMock.mockResolvedValue({ entries: [], nextCursor: null, hasMore: false });
+    const cap = silence();
+    try {
+      await expect(
+        buildProgram().parseAsync(["node", "speechifyai", "usage", "requests", "--status", "abc"]),
+      ).rejects.toMatchObject({ code: "invalid_argument", exitCode: 65 });
+    } finally {
+      cap.restore();
+    }
+    expect(listRequestLogMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("usage analytics", () => {
   it("passes granularity through to the service", async () => {
     getRequestAnalyticsMock.mockResolvedValue({

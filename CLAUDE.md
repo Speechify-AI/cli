@@ -98,12 +98,6 @@ are **snake_case** (`voice_id`, `audio_format`). `voices.list()` returns a bare
 `.statusCode` + `.body` (the `{ error: { code, message, fields }, request_id }`
 envelope). It accepts a Firebase ID token as the Bearer, so TTS works in console mode.
 
-## Known cleanup
-
-`src/config.ts` (`resolveConfig`) and `options.ts:toConfigInput` are superseded by
-`auth/session.ts` — dead code, kept only because `config.test.ts` still covers it.
-Safe to delete in a cleanup commit.
-
 ## Active work
 
 Branch `feat/console-auth` → draft PR #1 (the console-auth foundation). `main` has

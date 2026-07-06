@@ -1,13 +1,13 @@
 // `speechifyai workspace list | use <id> | current` — pick the active workspace,
 // stored and sent as X-Tenant-ID on every console request.
 import type { Command } from "commander";
-import { resolveAuth } from "../auth/session.js";
+import { requireConsole, resolveAuth } from "../auth/session.js";
 import { readConfigFile, writeConfigFile } from "../configFile.js";
 import { CliError, ExitCode } from "../core/errors.js";
 import { createHttpClient } from "../core/http.js";
 import { listWorkspaces } from "../core/workspaces.js";
 import type { GlobalOptions } from "../options.js";
-import { emit, logInfo, printJson, renderTable } from "../output.js";
+import { emit, logInfo, renderTable } from "../output.js";
 import { outputMode } from "../runtime.js";
 
 export function registerWorkspaceCommand(program: Command): void {
@@ -20,6 +20,7 @@ export function registerWorkspaceCommand(program: Command): void {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const mode = await outputMode(opts);
       const auth = await resolveAuth({ apiKey: opts.apiKey, apiVersion: opts.apiVersion, baseUrl: opts.baseUrl });
+      requireConsole(auth);
       const workspaces = await listWorkspaces(createHttpClient(auth));
       const current = opts.workspace ?? (await readConfigFile())?.workspace_id;
 
@@ -48,7 +49,9 @@ export function registerWorkspaceCommand(program: Command): void {
     .description("Select the active workspace.")
     .action(async (id: string, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const mode = await outputMode(opts);
       const auth = await resolveAuth({ apiKey: opts.apiKey, baseUrl: opts.baseUrl });
+      requireConsole(auth);
       const match = (await listWorkspaces(createHttpClient(auth))).find((w) => w.id === id);
       if (!match) {
         throw new CliError(`Workspace ${id} is not one of your workspaces (see \`speechifyai workspace list\`).`, {
@@ -57,8 +60,11 @@ export function registerWorkspaceCommand(program: Command): void {
         });
       }
       await writeConfigFile({ ...((await readConfigFile()) ?? {}), workspace_id: match.id });
-      if (opts.json) printJson({ workspace: match });
-      else logInfo(`Now using ${match.name} (${match.id}).`);
+      emit(mode, {
+        data: { workspace: match },
+        human: () => logInfo(`Now using ${match.name} (${match.id}).`),
+        context: `Selected workspace ${match.name} (${match.id}); it's sent as X-Tenant-ID on console requests.`,
+      });
     });
 
   workspace

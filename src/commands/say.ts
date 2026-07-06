@@ -77,8 +77,11 @@ export function registerSayCommand(program: Command): void {
       const opts = command.optsWithGlobals() as SayOptions;
       const mode = await outputMode(opts);
       const toStdout = opts.out === "-";
-      if (toStdout && opts.json) {
-        throw new CliError("Cannot combine --json with --out - (both write to stdout).", {
+      // Both --json/--agent-friendly and `--out -` claim stdout, so an explicit
+      // pairing is rejected. (Auto-detected agent mode still yields to `--out -`,
+      // which is an explicit request for raw audio on stdout — see below.)
+      if (toStdout && (opts.json || opts.agentFriendly)) {
+        throw new CliError("Cannot combine --json/--agent-friendly with --out - (both write to stdout).", {
           exitCode: ExitCode.DATA_ERR,
         });
       }

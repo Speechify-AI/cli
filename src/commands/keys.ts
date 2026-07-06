@@ -2,9 +2,8 @@
 // Only a console-user session can mint keys; an API-key-authed caller cannot. The
 // create secret is printed once (stdout), everything else is masked.
 import { type Command, Option } from "commander";
-import { PINNED_API_VERSION, requireWorkspace, resolveAuth } from "../auth/session.js";
+import { consoleHttpClient } from "../core/consoleClient.js";
 import { CliError, ExitCode, type InputField, NeedsInputError } from "../core/errors.js";
-import { createHttpClient, type HttpClient } from "../core/http.js";
 import {
   API_KEY_SCOPES,
   type ApiKeyScope,
@@ -38,18 +37,6 @@ const CREATE_INPUTS: InputField[] = [
   },
 ];
 
-/** Shared preamble: resolve auth, require a workspace, and build a version-pinned client. */
-async function authedHttp(opts: GlobalOptions): Promise<HttpClient> {
-  const auth = await resolveAuth({
-    apiKey: opts.apiKey,
-    apiVersion: opts.apiVersion,
-    baseUrl: opts.baseUrl,
-    workspaceId: opts.workspace,
-  });
-  requireWorkspace(auth);
-  return createHttpClient({ ...auth, apiVersion: auth.apiVersion ?? PINNED_API_VERSION });
-}
-
 const day = (iso: string | undefined): string => (iso ? iso.slice(0, 10) : "");
 
 export function registerKeysCommand(program: Command): void {
@@ -61,7 +48,7 @@ export function registerKeysCommand(program: Command): void {
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const mode = await outputMode(opts);
-      const list = await listApiKeys(await authedHttp(opts));
+      const list = await listApiKeys(await consoleHttpClient(opts));
 
       emit(mode, {
         data: list,
@@ -106,7 +93,7 @@ export function registerKeysCommand(program: Command): void {
           code: "missing_input",
         });
       }
-      const created = await createApiKey(await authedHttp(opts), { name: nameArg, scopes: opts.scope });
+      const created = await createApiKey(await consoleHttpClient(opts), { name: nameArg, scopes: opts.scope });
 
       emit(mode, {
         data: created,
@@ -130,7 +117,7 @@ export function registerKeysCommand(program: Command): void {
     .action(async (id: string, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const mode = await outputMode(opts);
-      const key = await getApiKey(await authedHttp(opts), id);
+      const key = await getApiKey(await consoleHttpClient(opts), id);
 
       emit(mode, {
         data: key,
@@ -166,7 +153,7 @@ export function registerKeysCommand(program: Command): void {
           code: "missing_input",
         });
       }
-      const updated = await updateApiKey(await authedHttp(opts), id, { name: opts.name, scopes: opts.scope });
+      const updated = await updateApiKey(await consoleHttpClient(opts), id, { name: opts.name, scopes: opts.scope });
 
       emit(mode, {
         data: updated,
@@ -182,7 +169,7 @@ export function registerKeysCommand(program: Command): void {
     .action(async (id: string, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const mode = await outputMode(opts);
-      await deleteApiKey(await authedHttp(opts), id);
+      await deleteApiKey(await consoleHttpClient(opts), id);
 
       emit(mode, {
         data: { id, revoked: true },

@@ -1,5 +1,5 @@
-// Global options shared by every command, plus the mapping into config input.
-import type { ConfigInput } from "./config.js";
+// Global options shared by every command, plus flag-parsing helpers.
+import { CliError, ExitCode } from "./core/errors.js";
 
 export interface GlobalOptions {
   apiKey?: string;
@@ -17,10 +17,32 @@ export interface GlobalOptions {
   input?: boolean;
 }
 
-export function toConfigInput(opts: GlobalOptions): ConfigInput {
-  return {
-    apiKey: opts.apiKey,
-    apiVersion: opts.apiVersion,
-    baseUrl: opts.baseUrl,
+/**
+ * A commander `argParser` that coerces a flag value to an integer (with optional
+ * bounds), throwing a DATA_ERR CliError on anything invalid — so `--limit abc`
+ * fails fast with a clear message instead of sending NaN on the wire.
+ */
+export function intArg(flag: string, bounds: { min?: number; max?: number } = {}): (value: string) => number {
+  return (value: string): number => {
+    const n = Number(value);
+    if (!Number.isInteger(n)) {
+      throw new CliError(`${flag} must be a whole number (got "${value}").`, {
+        exitCode: ExitCode.DATA_ERR,
+        code: "invalid_argument",
+      });
+    }
+    if (bounds.min !== undefined && n < bounds.min) {
+      throw new CliError(`${flag} must be at least ${bounds.min} (got ${n}).`, {
+        exitCode: ExitCode.DATA_ERR,
+        code: "invalid_argument",
+      });
+    }
+    if (bounds.max !== undefined && n > bounds.max) {
+      throw new CliError(`${flag} must be at most ${bounds.max} (got ${n}).`, {
+        exitCode: ExitCode.DATA_ERR,
+        code: "invalid_argument",
+      });
+    }
+    return n;
   };
 }

@@ -96,8 +96,12 @@ export function formatBytes(bytes: number): string {
 
 /** Mask a secret for display: keep the prefix and last 4 chars. */
 export function maskKey(key: string): string {
-  if (key.length <= 8) return "****";
-  return `${key.slice(0, 5)}…${key.slice(-4)}`;
+  const PREFIX = 5;
+  const SUFFIX = 4;
+  // Only reveal head + tail when at least a few characters stay masked in
+  // between; otherwise a short key would be shown (nearly) in full.
+  if (key.length < PREFIX + SUFFIX + 3) return "****";
+  return `${key.slice(0, PREFIX)}…${key.slice(-SUFFIX)}`;
 }
 
 export function renderTable(headers: string[], rows: string[][]): string {

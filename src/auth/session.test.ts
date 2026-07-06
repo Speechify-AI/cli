@@ -21,7 +21,22 @@ vi.mock("@napi-rs/keyring", () => ({
 
 import { readConfigFile, writeConfigFile } from "../configFile.js";
 import { CliError } from "../core/errors.js";
-import { DEFAULT_BASE_URL, requireWorkspace, resetIdTokenCache, resolveAuth } from "./session.js";
+import { DEFAULT_BASE_URL, requireConsole, requireWorkspace, resetIdTokenCache, resolveAuth } from "./session.js";
+
+/** Stub the Firebase token exchange so a stored console session resolves offline. */
+function stubTokenExchange(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => ({ id_token: "idtok", refresh_token: "rt", expires_in: "3600" }),
+        }) as unknown as Response,
+    ),
+  );
+}
 
 let dir: string;
 
@@ -127,6 +142,33 @@ describe("resolveAuth", () => {
 
   it("throws a CliError when nothing is configured", async () => {
     await expect(resolveAuth()).rejects.toBeInstanceOf(CliError);
+  });
+
+  it("lets an env API key outrank a stored console session by default", async () => {
+    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
+
+    const auth = await resolveAuth();
+    expect(auth).toMatchObject({ bearer: "sk_env", mode: "api-key" });
+  });
+
+  it("preferConsole ignores a flag/env API key and resolves the stored console session", async () => {
+    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
+    stubTokenExchange();
+
+    const auth = await resolveAuth({ apiKey: "sk_flag", preferConsole: true });
+    expect(auth).toMatchObject({ bearer: "idtok", tenantId: "ws_1", mode: "console" });
+  });
+});
+
+describe("requireConsole", () => {
+  it("throws in api-key mode", () => {
+    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key" })).toThrow(CliError);
+  });
+
+  it("is a no-op in console mode", () => {
+    expect(requireConsole({ bearer: "idtok", baseUrl: "y", tenantId: "ws_1", mode: "console" })).toBeUndefined();
   });
 });
 

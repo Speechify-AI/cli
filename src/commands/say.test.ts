@@ -41,3 +41,17 @@ describe("say — missing text, non-interactive", () => {
     });
   });
 });
+
+describe("say — stdout conflicts", () => {
+  it("rejects --json with --out - (both claim stdout)", async () => {
+    await expect(
+      buildProgram().parseAsync(["node", "speechifyai", "say", "hi", "--out", "-", "--json"]),
+    ).rejects.toMatchObject({ exitCode: 65 });
+  });
+
+  it("rejects --agent-friendly with --out - (previously silently ignored)", async () => {
+    await expect(
+      buildProgram().parseAsync(["node", "speechifyai", "say", "hi", "--out", "-", "--agent-friendly"]),
+    ).rejects.toMatchObject({ exitCode: 65 });
+  });
+});

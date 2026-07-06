@@ -3,7 +3,7 @@
 // `speechifyai mcp install` writes the server into local AI clients' configs.
 import { type Command, Option } from "commander";
 import { runMcp } from "../mcp/run.js";
-import type { GlobalOptions } from "../options.js";
+import { type GlobalOptions, intArg } from "../options.js";
 import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install.js";
 
 interface McpCommandOptions extends GlobalOptions {
@@ -17,7 +17,9 @@ export function registerMcpCommand(program: Command): void {
     .description("Run the MCP server over stdio (or --http) for AI agents.")
     .option("--http", "serve over streamable HTTP instead of stdio")
     .addOption(
-      new Option("--port <n>", "HTTP port (with --http)").default(3000).argParser((v) => Number.parseInt(v, 10)),
+      new Option("--port <n>", "HTTP port (with --http)")
+        .default(3000)
+        .argParser(intArg("--port", { min: 1, max: 65535 })),
     )
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as McpCommandOptions;

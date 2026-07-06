@@ -37,6 +37,13 @@ export interface AuthInput {
   workspaceId?: string;
   apiVersion?: string;
   baseUrl?: string;
+  /**
+   * Ignore any flag/env API key and resolve the stored console session instead.
+   * Used by the `login` bootstrap: right after storing a console session we need
+   * to list workspaces as that session, even when $SPEECHIFY_API_KEY is exported
+   * (which would otherwise outrank the just-stored session).
+   */
+  preferConsole?: boolean;
 }
 
 function clean(value: string | undefined): string | undefined {
@@ -103,8 +110,9 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
     clean(input.baseUrl) ?? clean(process.env[BASE_URL_ENV]) ?? clean(stored.base_url) ?? DEFAULT_BASE_URL;
   const apiVersion = clean(input.apiVersion) ?? clean(process.env[API_VERSION_ENV]) ?? clean(stored.api_version);
 
-  // 1. Explicit API key (flag or env) — power-user / TTS-only path.
-  const explicitKey = clean(input.apiKey) ?? clean(process.env[API_KEY_ENV]);
+  // 1. Explicit API key (flag or env) — power-user / TTS-only path. Skipped when
+  //    the caller explicitly wants the console session (the login bootstrap).
+  const explicitKey = input.preferConsole ? undefined : (clean(input.apiKey) ?? clean(process.env[API_KEY_ENV]));
   if (explicitKey) {
     return { bearer: explicitKey, baseUrl, apiVersion, mode: "api-key" };
   }
@@ -128,6 +136,20 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
     exitCode: ExitCode.CONFIG,
     code: "not_authenticated",
   });
+}
+
+/**
+ * Guard for console-only commands (keys, usage, workspaces). An API key reaches
+ * only the public TTS + scoped agent surface, so reject it here with a clear,
+ * client-side message instead of letting the request fail with a raw 401/403.
+ */
+export function requireConsole(auth: AuthContext): void {
+  if (auth.mode !== "console") {
+    throw new CliError(
+      "This command needs a console session — an API key can't reach workspace-scoped console endpoints. Run `speechifyai login`.",
+      { exitCode: ExitCode.CONFIG, code: "requires_console" },
+    );
+  }
 }
 
 /** Guard for workspace-scoped commands: console mode requires a selected workspace. */

@@ -4,6 +4,7 @@
 // credential in the response body (never in a URL). See auth/callbackServer.ts
 // for the full contract.
 import { CliError, ExitCode } from "../core/errors.js";
+import { fetchWithTimeout } from "../core/fetchWithTimeout.js";
 
 /** Stable identifier for this public client; lets the console scope CLI sessions. */
 export const CLI_CLIENT_ID = "speechifyai-cli";
@@ -37,17 +38,21 @@ export async function exchangeAuthCode(
   fetchImpl: typeof fetch = fetch,
 ): Promise<CliSession> {
   const url = `${consoleUrl.replace(/\/+$/, "")}/cli/token`;
-  const res = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      grant_type: "authorization_code",
-      client_id: CLI_CLIENT_ID,
-      code: params.code,
-      code_verifier: params.codeVerifier,
-      redirect_uri: params.redirectUri,
-    }),
-  });
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        client_id: CLI_CLIENT_ID,
+        code: params.code,
+        code_verifier: params.codeVerifier,
+        redirect_uri: params.redirectUri,
+      }),
+    },
+    { fetchImpl },
+  );
 
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;

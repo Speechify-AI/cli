@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AuthContext } from "../auth/session.js";
+import { type AuthContext, PINNED_API_VERSION } from "../auth/session.js";
 import { createHttpClient } from "./http.js";
 
 const auth: AuthContext = { bearer: "tok", tenantId: "ws_1", baseUrl: "https://api.example", mode: "console" };
@@ -23,6 +23,22 @@ describe("createHttpClient", () => {
     const headers = (call?.[1] as RequestInit | undefined)?.headers as Record<string, string>;
     expect(headers.authorization).toBe("Bearer tok");
     expect(headers["x-tenant-id"]).toBe("ws_1");
+  });
+
+  it("pins Speechify-Version to the coded-against default when the auth carries none", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => jsonResponse(200, {}));
+    const http = createHttpClient(auth, fetchImpl as unknown as typeof fetch);
+    await http.get("/v1/thing");
+    const headers = (fetchImpl.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers["speechify-version"]).toBe(PINNED_API_VERSION);
+  });
+
+  it("lets an explicit apiVersion override the pinned default", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => jsonResponse(200, {}));
+    const http = createHttpClient({ ...auth, apiVersion: "2030-01-01" }, fetchImpl as unknown as typeof fetch);
+    await http.get("/v1/thing");
+    const headers = (fetchImpl.mock.calls[0]?.[1] as RequestInit).headers as Record<string, string>;
+    expect(headers["speechify-version"]).toBe("2030-01-01");
   });
 
   it("maps an error envelope to a CliError carrying code/status/requestId", async () => {

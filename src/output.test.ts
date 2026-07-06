@@ -95,6 +95,14 @@ describe("maskKey", () => {
   it("fully masks short values", () => {
     expect(maskKey("short")).toBe("****");
   });
+  it("fully masks a value too short to keep any chars hidden", () => {
+    // 9 chars: prefix(5)+suffix(4) would otherwise reveal the whole thing.
+    expect(maskKey("123456789")).toBe("****");
+    expect(maskKey("12345678901")).toBe("****");
+  });
+  it("reveals head+tail once enough stays masked", () => {
+    expect(maskKey("123456789012")).toBe("12345…9012");
+  });
 });
 
 describe("renderTable", () => {

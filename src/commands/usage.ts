@@ -3,10 +3,10 @@
 // surfaces as an auth error). The log can be large, so `requests` shows one page
 // and exposes the cursor; `--all` follows it (bounded).
 import { type Command, Option } from "commander";
-import { PINNED_API_VERSION, requireWorkspace, resolveAuth } from "../auth/session.js";
-import { createHttpClient, type HttpClient } from "../core/http.js";
+import { consoleHttpClient } from "../core/consoleClient.js";
+import { CliError, ExitCode } from "../core/errors.js";
 import { getRequestAnalytics, listRequestLog, type RequestLogFilters } from "../core/usage.js";
-import type { GlobalOptions } from "../options.js";
+import { type GlobalOptions, intArg } from "../options.js";
 import { emit, logInfo, logWarning, renderTable } from "../output.js";
 import { outputMode } from "../runtime.js";
 
@@ -16,7 +16,7 @@ const GRANULARITIES = ["1m", "5m", "15m", "30m", "1h", "6h", "12h", "1d"];
 // Safety cap for --all so a wide window can't page forever.
 const MAX_ALL_PAGES = 100;
 
-/** Options carried by the shared filter flags (all optional, commander-parsed strings). */
+/** Options carried by the shared filter flags. Numeric flags are argParser-coerced. */
 interface FilterOptions extends GlobalOptions {
   start?: string;
   end?: string;
@@ -26,28 +26,16 @@ interface FilterOptions extends GlobalOptions {
   user?: string;
   keyId?: string;
   principalType?: string;
-  minLatency?: string;
-  maxLatency?: string;
+  minLatency?: number;
+  maxLatency?: number;
 }
 interface RequestsOptions extends FilterOptions {
-  limit?: string;
+  limit?: number;
   cursor?: string;
   all?: boolean;
 }
 interface AnalyticsOptions extends FilterOptions {
   granularity?: string;
-}
-
-/** Shared preamble: resolve auth, require a workspace, and build a version-pinned client. */
-async function authedHttp(opts: GlobalOptions): Promise<HttpClient> {
-  const auth = await resolveAuth({
-    apiKey: opts.apiKey,
-    apiVersion: opts.apiVersion,
-    baseUrl: opts.baseUrl,
-    workspaceId: opts.workspace,
-  });
-  requireWorkspace(auth);
-  return createHttpClient({ ...auth, apiVersion: auth.apiVersion ?? PINNED_API_VERSION });
 }
 
 /** Attach the filter flags shared by `requests` and `analytics`. */
@@ -61,8 +49,23 @@ function addFilterOptions(cmd: Command): Command {
     .option("--user <id>", "filter to a user principal (user_…)")
     .option("--key-id <id>", "filter to an API-key principal (key_…)")
     .addOption(new Option("--principal-type <type>", "filter by credential class").choices(PRINCIPAL_TYPES))
-    .option("--min-latency <ms>", "keep requests at or above this latency (ms)")
-    .option("--max-latency <ms>", "keep requests at or below this latency (ms)");
+    .option("--min-latency <ms>", "keep requests at or above this latency (ms)", intArg("--min-latency", { min: 0 }))
+    .option("--max-latency <ms>", "keep requests at or below this latency (ms)", intArg("--max-latency", { min: 0 }));
+}
+
+/** Validate repeatable --status values as HTTP status codes; reject non-numeric input. */
+function parseStatusCodes(raw: string[] | undefined): number[] | undefined {
+  if (!raw || raw.length === 0) return undefined;
+  return raw.map((value) => {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 100 || n > 599) {
+      throw new CliError(`--status must be an HTTP status code 100–599 (got "${value}").`, {
+        exitCode: ExitCode.DATA_ERR,
+        code: "invalid_argument",
+      });
+    }
+    return n;
+  });
 }
 
 /** Map parsed filter flags onto the service filter shape. */
@@ -71,13 +74,13 @@ function toFilters(opts: FilterOptions): RequestLogFilters {
     start: opts.start,
     end: opts.end,
     method: opts.method,
-    status: opts.status?.map(Number),
+    status: parseStatusCodes(opts.status),
     path: opts.path,
     userId: opts.user,
     apiKeyId: opts.keyId,
     principalType: opts.principalType,
-    minLatencyMs: opts.minLatency !== undefined ? Number(opts.minLatency) : undefined,
-    maxLatencyMs: opts.maxLatency !== undefined ? Number(opts.maxLatency) : undefined,
+    minLatencyMs: opts.minLatency,
+    maxLatencyMs: opts.maxLatency,
   };
 }
 
@@ -91,17 +94,17 @@ export function registerUsageCommand(program: Command): void {
   addFilterOptions(
     usage.command("requests").description("List the workspace request log (one page; use --all to follow the cursor)."),
   )
-    .option("--limit <n>", "page size (max 200)")
+    .option("--limit <n>", "page size (max 200)", intArg("--limit", { min: 1, max: 200 }))
     .option("--cursor <cursor>", "continue from a previous page's cursor")
     .option("--all", "follow the cursor and return every page (bounded)")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as RequestsOptions;
       const mode = await outputMode(opts);
-      const http = await authedHttp(opts);
+      const http = await consoleHttpClient(opts);
       const filters: RequestLogFilters = {
         ...toFilters(opts),
         cursor: opts.cursor,
-        limit: opts.limit !== undefined ? Number(opts.limit) : undefined,
+        limit: opts.limit,
       };
 
       let page = await listRequestLog(http, filters);
@@ -154,7 +157,7 @@ export function registerUsageCommand(program: Command): void {
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as AnalyticsOptions;
       const mode = await outputMode(opts);
-      const http = await authedHttp(opts);
+      const http = await consoleHttpClient(opts);
       const analytics = await getRequestAnalytics(http, { ...toFilters(opts), granularity: opts.granularity });
 
       emit(mode, {

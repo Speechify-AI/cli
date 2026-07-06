@@ -18,7 +18,7 @@ import { createHttpClient } from "../core/http.js";
 import { listVoices } from "../core/voices.js";
 import { listWorkspaces } from "../core/workspaces.js";
 import type { GlobalOptions } from "../options.js";
-import { emit, logInfo, logWarning, maskKey, printJson } from "../output.js";
+import { emit, logInfo, logWarning, maskKey } from "../output.js";
 import { isInteractive, outputMode } from "../runtime.js";
 
 interface LoginOptions extends GlobalOptions {
@@ -114,13 +114,13 @@ export function registerAuthCommands(program: Command): void {
     .option("--firebase-api-key <key>", "Firebase web API key (or $SPEECHIFY_FB_API_KEY)")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as LoginOptions;
+      const mode = await outputMode(opts);
 
       // API-key login (TTS surface). The global --api-key, on `login`, means
       // "validate and persist this key" — replacing any console session, since the
       // resolver would otherwise outrank a stored key with a live console session.
       const apiKey = opts.apiKey?.trim();
       if (apiKey) {
-        const mode = await outputMode(opts);
         const stored = (await readConfigFile()) ?? {};
         const baseUrl = opts.baseUrl ?? process.env.SPEECHIFY_BASE_URL ?? stored.base_url;
         const apiVersion = opts.apiVersion ?? process.env.SPEECHIFY_API_VERSION ?? stored.api_version;
@@ -162,7 +162,9 @@ export function registerAuthCommands(program: Command): void {
       });
 
       // Pick a workspace: honor --workspace, else auto-select a lone workspace.
-      const auth = await resolveAuth({ baseUrl: opts.baseUrl });
+      // preferConsole so a stray $SPEECHIFY_API_KEY doesn't outrank the session we
+      // just stored (which would 403 the workspace listing below).
+      const auth = await resolveAuth({ baseUrl: opts.baseUrl, preferConsole: true });
       const workspaces = await listWorkspaces(createHttpClient(auth));
       let selected = workspaces.find((w) => w.id === opts.workspace);
       if (!selected && workspaces.length === 1) selected = workspaces[0];
@@ -170,14 +172,24 @@ export function registerAuthCommands(program: Command): void {
         await writeConfigFile({ ...((await readConfigFile()) ?? {}), workspace_id: selected.id });
       }
 
-      if (opts.json) {
-        printJson({ status: "logged_in", workspace: selected ?? null, workspace_count: workspaces.length });
-        return;
-      }
-      logInfo("Logged in.");
-      if (selected) logInfo(`Workspace: ${selected.name} (${selected.id}).`);
-      else if (workspaces.length === 0) logWarning("You don't belong to any workspaces yet.");
-      else logInfo("Select a workspace: speechifyai workspace use <id>  (list: speechifyai workspace list).");
+      emit(mode, {
+        data: { status: "logged_in", workspace: selected ?? null, workspace_count: workspaces.length },
+        human: () => {
+          logInfo("Logged in.");
+          if (selected) logInfo(`Workspace: ${selected.name} (${selected.id}).`);
+          else if (workspaces.length === 0) logWarning("You don't belong to any workspaces yet.");
+          else logInfo("Select a workspace: `speechifyai workspace use <id>` (list: `speechifyai workspace list`).");
+        },
+        context: selected
+          ? `Logged in as a console user, acting in workspace ${selected.name} (${selected.id}).`
+          : workspaces.length === 0
+            ? "Logged in as a console user, but you don't belong to any workspaces yet."
+            : "Logged in as a console user; no workspace is selected yet.",
+        hints:
+          selected || workspaces.length === 0
+            ? undefined
+            : ["Select a workspace with `speechifyai workspace use <id>`."],
+      });
     });
 
   program
@@ -185,9 +197,15 @@ export function registerAuthCommands(program: Command): void {
     .description("Forget the stored session / credentials.")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
+      const mode = await outputMode(opts);
       const removed = await clearConfigFile();
-      if (opts.json) printJson({ status: removed ? "logged_out" : "not_logged_in" });
-      else logInfo(removed ? "Logged out." : "Not logged in.");
+      emit(mode, {
+        data: { status: removed ? "logged_out" : "not_logged_in" },
+        human: () => logInfo(removed ? "Logged out." : "Not logged in."),
+        context: removed
+          ? "Cleared the stored session/credentials from every backend (keychain, encrypted file, legacy)."
+          : "Nothing to clear — no stored session or credentials were found.",
+      });
     });
 
   program

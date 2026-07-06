@@ -91,3 +91,20 @@ describe("login --api-key", () => {
     expect(cfg?.api_key).toBeUndefined();
   });
 });
+
+describe("logout", () => {
+  it("emits a structured payload to stdout in --json mode (via emit, not a json-only branch)", async () => {
+    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb" });
+    const out: string[] = [];
+    const spy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown): boolean => {
+      out.push(String(chunk));
+      return true;
+    }) as unknown as typeof process.stdout.write);
+    try {
+      await buildProgram().parseAsync(["node", "speechifyai", "logout", "--json"]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(JSON.parse(out.join(""))).toEqual({ status: "logged_out" });
+  });
+});

@@ -3,6 +3,7 @@
 // accepts) via Google's public secure-token endpoint — the same mechanism the
 // firebase/gcloud CLIs use. The web API key is public (embeddable in clients).
 import { CliError, ExitCode } from "../core/errors.js";
+import { fetchWithTimeout } from "../core/fetchWithTimeout.js";
 
 const SECURE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token";
 
@@ -24,11 +25,15 @@ export async function exchangeRefreshToken(
   refreshToken: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RefreshedToken> {
-  const res = await fetchImpl(`${SECURE_TOKEN_URL}?key=${encodeURIComponent(apiKey)}`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }).toString(),
-  });
+  const res = await fetchWithTimeout(
+    `${SECURE_TOKEN_URL}?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }).toString(),
+    },
+    { fetchImpl },
+  );
 
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
