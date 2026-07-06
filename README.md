@@ -19,7 +19,8 @@ for short-lived ID tokens automatically.
 speechifyai login                 # browser sign-in (see the note below)
 speechifyai workspace list        # workspaces you belong to
 speechifyai workspace use ws_…    # select the active workspace
-speechifyai whoami                # how you're authed + active workspace
+speechifyai whoami                # who you are (email), auth mode, active workspace
+speechifyai whoami --check        # also verify the credential live; exits non-zero if invalid
 speechifyai logout
 ```
 
@@ -66,6 +67,8 @@ speechifyai say "Text to speak" \
 
 echo "from a pipe" | speechifyai say -        # read text from stdin
 speechifyai voices list                       # browse voices
+speechifyai voices list --locale en --gender female --search warm
+                                              # filter by locale prefix, gender, free text
 ```
 
 Add `--json` to any command for machine-readable stdout (human status goes to

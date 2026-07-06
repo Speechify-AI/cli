@@ -9,6 +9,7 @@ import { openBrowser } from "../auth/browser.js";
 import { startCallbackServer } from "../auth/callbackServer.js";
 import { CLI_CLIENT_ID, exchangeAuthCode } from "../auth/cliAuth.js";
 import { exchangeRefreshToken } from "../auth/firebase.js";
+import { decodeIdTokenClaims } from "../auth/idToken.js";
 import { createPkcePair } from "../auth/pkce.js";
 import { resolveAuth } from "../auth/session.js";
 import { clearConfigFile, readConfigFile, writeConfigFile } from "../configFile.js";
@@ -24,6 +25,10 @@ import { isInteractive, outputMode } from "../runtime.js";
 interface LoginOptions extends GlobalOptions {
   refreshToken?: string;
   firebaseApiKey?: string;
+}
+
+interface WhoamiOptions extends GlobalOptions {
+  check?: boolean;
 }
 
 /** Inputs `login` needs when the browser flow can't run (agent, CI, non-TTY). */
@@ -211,41 +216,82 @@ export function registerAuthCommands(program: Command): void {
   program
     .command("whoami")
     .description("Show how you're authenticated and the active workspace.")
+    .option("--check", "verify the credential against the API (exits non-zero when invalid)")
     .action(async (_options: unknown, command: Command) => {
-      const opts = command.optsWithGlobals() as GlobalOptions;
+      const opts = command.optsWithGlobals() as WhoamiOptions;
       const mode = await outputMode(opts);
+
+      /** --check for an API key: one real call against the public TTS surface. */
+      const checkApiKey = async (): Promise<void> => {
+        const auth = await resolveAuth({ apiKey: opts.apiKey, apiVersion: opts.apiVersion, baseUrl: opts.baseUrl });
+        await listVoices(createClient({ bearer: auth.bearer, apiVersion: auth.apiVersion, baseUrl: auth.baseUrl }));
+      };
+
       const flagKey = opts.apiKey?.trim();
       const envKey = process.env.SPEECHIFY_API_KEY?.trim();
       if (flagKey || envKey) {
         const source = flagKey ? "flag" : "env";
         const key = flagKey || envKey || "";
+        if (opts.check) await checkApiKey();
+        const valid = opts.check ? " — key is valid" : "";
         emit(mode, {
-          data: { mode: "api-key", source, key: maskKey(key) },
-          human: () => logInfo(`Authenticated with an API key (${source}): ${maskKey(key)}`),
-          context: `Authenticated with an API key from the ${source}. API keys reach the public TTS surface only, not workspace-scoped console endpoints.`,
+          data: { mode: "api-key", source, key: maskKey(key), ...(opts.check ? { checked: true } : {}) },
+          human: () => logInfo(`Authenticated with an API key (${source}): ${maskKey(key)}${valid}`),
+          context: `Authenticated with an API key from the ${source}${opts.check ? " (verified against the API)" : ""}. API keys reach the public TTS surface only, not workspace-scoped console endpoints.`,
         });
         return;
       }
+
       const stored = await readConfigFile();
       if (stored?.refresh_token) {
+        // Identity from the cached ID token's claims — display only, no network.
+        let claims = stored.id_token ? decodeIdTokenClaims(stored.id_token) : undefined;
+        let workspaceCount: number | undefined;
+        if (opts.check) {
+          // Mint/refresh a live token, then prove the API accepts it.
+          const auth = await resolveAuth({ apiVersion: opts.apiVersion, baseUrl: opts.baseUrl });
+          claims = decodeIdTokenClaims(auth.bearer) ?? claims;
+          workspaceCount = (await listWorkspaces(createHttpClient(auth))).length;
+        }
+        const who = claims?.email ?? "a console user";
         emit(mode, {
-          data: { mode: "console", workspace_id: stored.workspace_id ?? null },
-          human: () => logInfo(`Logged in (console session). Workspace: ${stored.workspace_id ?? "(none selected)"}.`),
-          context: stored.workspace_id
-            ? `Logged in as a console user, acting in workspace ${stored.workspace_id}.`
-            : "Logged in as a console user, but no workspace is selected yet.",
+          data: {
+            mode: "console",
+            email: claims?.email ?? null,
+            user_id: claims?.userId ?? null,
+            workspace_id: stored.workspace_id ?? null,
+            ...(opts.check ? { checked: true, workspace_count: workspaceCount } : {}),
+          },
+          human: () =>
+            logInfo(
+              `Logged in as ${who}${opts.check ? " (session valid)" : ""}. Workspace: ${stored.workspace_id ?? "(none selected)"}.`,
+            ),
+          context: `Logged in as ${who}${opts.check ? "; the session was verified against the API" : ""}. ${
+            stored.workspace_id ? `Acting in workspace ${stored.workspace_id}.` : "No workspace is selected yet."
+          }`,
           hints: stored.workspace_id ? undefined : ["Select a workspace with `speechifyai workspace use <id>`."],
         });
         return;
       }
+
       if (stored?.api_key) {
         const masked = maskKey(stored.api_key);
+        if (opts.check) await checkApiKey();
         emit(mode, {
-          data: { mode: "api-key", source: "file", key: masked },
-          human: () => logInfo(`Authenticated with a stored API key: ${masked}`),
-          context: "Authenticated with a stored API key (public TTS surface only).",
+          data: { mode: "api-key", source: "file", key: masked, ...(opts.check ? { checked: true } : {}) },
+          human: () => logInfo(`Authenticated with a stored API key: ${masked}${opts.check ? " — key is valid" : ""}`),
+          context: `Authenticated with a stored API key${opts.check ? " (verified against the API)" : ""} (public TTS surface only).`,
         });
         return;
+      }
+
+      // Not authenticated: --check is a liveness contract, so fail loudly (78);
+      // without it, report the state as data and exit 0.
+      if (opts.check) {
+        throw new CliError("Not authenticated. Run `speechifyai login`.", {
+          exitCode: ExitCode.CONFIG,
+          code: "not_authenticated",
+        });
       }
       emit(mode, {
         data: { mode: null },
