@@ -1,8 +1,8 @@
 // Shared voice-catalog service, backing `voices list`.
 //
-// The installed @speechify/api (v2) pins a Speechify-Version where GET /v1/voices
-// still returns a bare array, so list() takes no pagination args. When the SDK is
-// regenerated against the paginated envelope, cursor following lands here.
+// The installed @speechify/api (v3) was regenerated against the paginated
+// envelope: GET /v1/voices now returns a Page (async iterable) instead of a
+// bare array, so we `for await` over it and follow pages until exhaustion.
 import type { SpeechifyClient } from "@speechify/api";
 
 export interface VoiceSummary {
@@ -17,22 +17,25 @@ export interface VoiceSummary {
 }
 
 export async function listVoices(client: SpeechifyClient): Promise<VoiceSummary[]> {
-  const voices = await client.voices.list();
-  return voices.map((voice) => ({
-    id: voice.id,
-    displayName: voice.display_name,
-    gender: voice.gender,
-    locale: voice.locale,
-    type: voice.type,
-    models: voice.models.map((model) => model.name),
-    tags: voice.tags ?? [],
-  }));
+  const summaries: VoiceSummary[] = [];
+  for await (const voice of await client.voices.list()) {
+    summaries.push({
+      id: voice.id,
+      displayName: voice.display_name,
+      gender: voice.gender,
+      locale: voice.locale,
+      type: voice.type,
+      models: voice.models.map((model) => model.name),
+      tags: voice.tags ?? [],
+    });
+  }
+  return summaries;
 }
 
 export interface VoiceFilters {
   /** Case-insensitive locale prefix: "en" matches en-US and en-GB; "en-US" is exact. */
   locale?: string;
-  /** Case-insensitive exact gender ("male", "female", "notSpecified"). */
+  /** Case-insensitive exact gender ("male", "female", "not_specified"). */
   gender?: string;
   /** Case-insensitive substring match against id, display name, and tags. */
   search?: string;

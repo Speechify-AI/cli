@@ -14,7 +14,7 @@ interface McpCommandOptions extends GlobalOptions {
 export function registerMcpCommand(program: Command): void {
   const mcp = program
     .command("mcp")
-    .description("Run the MCP server over stdio (or --http) for AI agents.")
+    .description("(alpha) Run the MCP server over stdio (or --http) for AI agents.")
     .option("--http", "serve over streamable HTTP instead of stdio")
     .addOption(
       new Option("--port <n>", "HTTP port (with --http)")
@@ -37,7 +37,7 @@ export function registerMcpCommand(program: Command): void {
 
   mcp
     .command("install")
-    .description("Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …).")
+    .description("(alpha) Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …).")
     .option("--client <ids...>", `client id(s): ${CLIENT_IDS.join(", ")}`)
     .option("--all", "install into every detected client")
     .option("--print", "print the config block instead of writing it")

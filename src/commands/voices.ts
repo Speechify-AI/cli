@@ -16,7 +16,7 @@ export function registerVoicesCommand(program: Command): void {
     .command("list")
     .description("List available voices (built-in and cloned).")
     .option("--locale <locale>", 'filter by locale prefix, e.g. "en" (all English) or "en-US" (exact)')
-    .addOption(new Option("--gender <gender>", "filter by gender").choices(["male", "female", "notSpecified"]))
+    .addOption(new Option("--gender <gender>", "filter by gender").choices(["male", "female", "not_specified"]))
     .option("--search <text>", "case-insensitive match against voice id, name, and tags")
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as VoicesListOptions;

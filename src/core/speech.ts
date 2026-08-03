@@ -80,7 +80,10 @@ export async function synthesize(client: SpeechifyClient, opts: SynthOptions): P
   const response = await client.audio.speech(request);
   return {
     audio: Buffer.from(response.audio_data, "base64"),
-    format: response.audio_format,
+    // v3 widened the response AudioFormat with "ulaw", which the CLI never
+    // requests (see AUDIO_FORMATS); the echo is one of the 5 request formats,
+    // so narrow it back to the request union.
+    format: response.audio_format as AudioFormat,
     billableCharacters: response.billable_characters_count,
   };
 }

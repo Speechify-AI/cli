@@ -19,7 +19,8 @@ export function createClient(config: ClientConfig): SpeechifyClient {
   if (config.tenantId) headers["X-Tenant-ID"] = config.tenantId;
 
   return new SpeechifyClient({
-    apiKey: config.bearer,
+    // v3 dropped `apiKey`; bearer auth is now `auth: { token }` (BearerAuthProvider).
+    auth: { token: config.bearer },
     // Bound each request the same way the raw fetches are bounded (see
     // core/fetchWithTimeout.ts); the SDK applies this per attempt.
     timeoutInSeconds: resolveTimeoutSeconds(),

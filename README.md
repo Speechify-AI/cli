@@ -167,6 +167,10 @@ full `https://…` endpoint is used as-is.
 
 ## MCP server
 
+> **Alpha — expect changes.** The tool implementations behind this command are
+> expected to move to a hosted server, with `speechifyai mcp` becoming a relay
+> to it. Don't build on the MCP surface in its current form.
+
 `speechifyai mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
 directly. Tools:
