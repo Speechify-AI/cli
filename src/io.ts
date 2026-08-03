@@ -1,5 +1,7 @@
-// Input helpers: reading the text to synthesize and reading piped stdin.
+// Input helpers: reading the text to synthesize, reading piped stdin, and
+// prompting for input on an interactive TTY.
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { CliError, ExitCode } from "./core/errors.js";
 
 export function readStdin(): Promise<string> {
@@ -64,16 +66,23 @@ export function readStdinWithFirstByteTimeout(firstByteTimeoutMs: number): Promi
   });
 }
 
-// Resolve text from (in precedence order): --input-file, a positional argument,
-// or piped stdin (when the arg is "-" or stdin isn't a TTY).
-export async function resolveTextInput(positional: string | undefined, inputFile: string | undefined): Promise<string> {
+// Resolve text from (in precedence order): --input-file, --input, a positional
+// argument, or piped stdin (when the value is "-" or stdin isn't a TTY).
+export async function resolveTextInput(
+  positional: string | undefined,
+  inputFile: string | undefined,
+  input?: string,
+): Promise<string> {
   if (inputFile) {
     return readFile(inputFile, "utf8");
+  }
+  if (input !== undefined && input !== "-") {
+    return input;
   }
   if (positional !== undefined && positional !== "-") {
     return positional;
   }
-  if (positional === "-") {
+  if (positional === "-" || input === "-") {
     // Explicit request to read stdin — block until the writer closes.
     const piped = await readStdin();
     if (piped.trim().length > 0) return piped;
@@ -83,8 +92,67 @@ export async function resolveTextInput(positional: string | undefined, inputFile
     const piped = await readStdinWithFirstByteTimeout(STDIN_FIRST_BYTE_TIMEOUT_MS);
     if (piped !== null && piped.trim().length > 0) return piped;
   }
-  throw new CliError("No input text. Pass text as an argument, use --input-file, or pipe it via stdin.", {
-    exitCode: ExitCode.DATA_ERR,
-    code: "missing_input",
-  });
+  throw new CliError(
+    "No input text. Pass text via --input <text>, as an argument, use --input-file <path>, or pipe it via stdin.",
+    {
+      exitCode: ExitCode.DATA_ERR,
+      code: "missing_input",
+    },
+  );
+}
+
+/** Options for interactive prompts. */
+export interface PromptOptions {
+  /**
+   * Value accepted when the user presses Enter without typing. Shown in the
+   * prompt (e.g. `Voice [george]: `) so a bare Enter walks the wizard through.
+   */
+  defaultValue?: string;
+}
+
+/**
+ * Prompt for a value on an interactive TTY (readline over stdin, with the prompt
+ * itself written to stderr so stdout stays clean for machine output).
+ * Re-prompts until a non-empty, trimmed answer is given — or, when a default
+ * exists, returns the default on an empty (Enter) answer.
+ */
+export async function promptText(prompt: string, options: PromptOptions = {}): Promise<string> {
+  const { defaultValue } = options;
+  const suffix = defaultValue === undefined ? "" : ` [${defaultValue}]`;
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    for (;;) {
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`${prompt}${suffix}: `, resolve);
+      });
+      const trimmed = answer.trim();
+      if (trimmed) return trimmed;
+      if (defaultValue !== undefined) return defaultValue;
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Prompt for a yes/no answer on an interactive TTY. An empty (Enter) answer
+ * accepts `defaultValue` (shown as [Y/n] / [y/N]); typed answers must be a
+ * yes/no variant (y/yes/n/no), anything else re-prompts.
+ */
+export async function promptConfirm(prompt: string, defaultValue = false): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const suffix = defaultValue ? " [Y/n]" : " [y/N]";
+    for (;;) {
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`${prompt}${suffix}: `, resolve);
+      });
+      const trimmed = answer.trim().toLowerCase();
+      if (trimmed === "") return defaultValue;
+      if (trimmed === "y" || trimmed === "yes") return true;
+      if (trimmed === "n" || trimmed === "no") return false;
+    }
+  } finally {
+    rl.close();
+  }
 }

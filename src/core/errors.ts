@@ -43,22 +43,32 @@ export interface InputField {
 
 /**
  * Thrown when a command needs input it can't collect — running under an agent, in
- * CI, on a non-TTY, or with --no-input. Instead of blocking on stdin, the CLI
- * surfaces the inputs the caller can provide so an agent can collect them and
- * re-invoke. Rendered by `emitNeedsInput`; carries exit code 2 (distinct from
- * generic/data errors). Extends Error (not CliError) so it bypasses the normal
- * error envelope and is special-cased in the fatal handler.
+ * CI, on a non-TTY, with --no-input, or because flags/args were supplied (any
+ * flagged invocation is deterministic; it never falls into an interactive path).
+ * Instead of blocking on stdin, the CLI surfaces the inputs the caller can
+ * provide so an agent can collect them and re-invoke. Rendered by
+ * `emitNeedsInput`; carries exit code 2 (distinct from generic/data errors).
+ * Extends Error (not CliError) so it bypasses the normal error envelope and is
+ * special-cased in the fatal handler.
  */
+export interface NeedsInputErrorOptions {
+  /** Optional pointer to the interactive (bare-command) alternative, for humans. */
+  interactiveHint?: string;
+}
+
 export class NeedsInputError extends Error {
   readonly exitCode = ExitCode.NEEDS_INPUT;
+  readonly interactiveHint?: string;
 
   constructor(
     readonly command: string,
     readonly fields: InputField[],
     readonly missing: string[],
+    options: NeedsInputErrorOptions = {},
   ) {
     super(`\`${command}\` needs input (${missing.join(", ")}) but is running non-interactively.`);
     this.name = "NeedsInputError";
+    this.interactiveHint = options.interactiveHint;
   }
 }
 

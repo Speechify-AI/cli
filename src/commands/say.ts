@@ -15,7 +15,7 @@ import {
   type SpeechModel,
   synthesize,
 } from "../core/speech.js";
-import { resolveTextInput } from "../io.js";
+import { promptConfirm, promptText, resolveTextInput } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { emit, formatBytes, logInfo, logWarning } from "../output.js";
 import { isInteractive, outputMode } from "../runtime.js";
@@ -39,7 +39,7 @@ const SAY_INPUTS: InputField[] = [
     name: "text",
     description: "Text to synthesize",
     required: true,
-    flag: "<text> (positional), --input-file <path>, or piped stdin",
+    flag: "--input <text>, <text> (positional), --input-file <path>, or piped stdin",
   },
   {
     name: "voice",
@@ -72,6 +72,7 @@ export function registerSayCommand(program: Command): void {
     .option("--play", "play the audio after synthesis")
     .option("--loudness-normalization", "normalize loudness to -14 LUFS")
     .option("--no-text-normalization", "keep numbers/dates as written instead of spelled out")
+    .option("--input <text>", "text to synthesize (alternative to the positional argument)")
     .option("--input-file <path>", "read input text from a file")
     .action(async (textArg: string | undefined, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as SayOptions;
@@ -86,17 +87,52 @@ export function registerSayCommand(program: Command): void {
         });
       }
 
-      // Resolve text from positional/--input-file/stdin. When none is available
-      // and we can't prompt (agent, CI, non-TTY, --no-input), return a structured
-      // needs-input spec (exit 2) instead of a generic data error.
+      // Resolve text from positional/--input/--input-file/stdin. With no input
+      // source at all, a *bare* `say` on a real TTY (no flags/args) prompts
+      // interactively; any flagged/arg'd or non-interactive (CI, agent, non-TTY,
+      // --no-input) invocation returns a structured needs-input spec (exit 2)
+      // that says exactly what to provide.
+      // NOTE: `--input <text>` shares the `input` attribute name with the global
+      // `--no-input` flag; optsWithGlobals() merges globals-over-locals, so the
+      // flagged text must be read from the subcommand's own store.
+      const flaggedText = command.getOptionValue("input") as string | undefined;
       let input: string;
+      // Mutable mirrors of the options: the interactive wizard below prompts for
+      // each of these, so a bare `say` can override the flag defaults.
+      let voice = opts.voice;
+      let format = opts.format;
+      let out = opts.out;
+      let play = opts.play ?? false;
+      let loudnessNormalization = opts.loudnessNormalization ?? false;
+      let textNormalization = opts.textNormalization !== false;
       try {
-        input = await resolveTextInput(textArg, opts.inputFile);
+        input = await resolveTextInput(textArg, opts.inputFile, flaggedText);
       } catch (err) {
-        if (err instanceof CliError && err.code === "missing_input" && !(await isInteractive(opts))) {
-          throw new NeedsInputError("say", SAY_INPUTS, ["text"]);
+        if (err instanceof CliError && err.code === "missing_input") {
+          if (await isInteractive(opts, command)) {
+            // Bare `say` on a real TTY (no flags/args): the full interactive
+            // wizard. Every option is prompted with a sensible default, so
+            // Enter-through works — type the text, then mash Enter.
+            input = await promptText("Text-to-Speech");
+            voice = await promptText("Voice", { defaultValue: voice });
+            do {
+              format = (await promptText("Format", { defaultValue: format })) as AudioFormat;
+              if (!AUDIO_FORMATS.includes(format)) {
+                logWarning(`Unknown format "${format}" — choose one of: ${AUDIO_FORMATS.join(", ")}.`);
+              }
+            } while (!AUDIO_FORMATS.includes(format));
+            out = await promptText("Output file", { defaultValue: out ?? `speech.${format}` });
+            play = await promptConfirm("Play audio after synthesis", play);
+            loudnessNormalization = await promptConfirm("Loudness normalization", loudnessNormalization);
+            textNormalization = await promptConfirm("Text normalization", textNormalization);
+          } else {
+            throw new NeedsInputError("say", SAY_INPUTS, ["text"], {
+              interactiveHint: "Or run `speechifyai say` with no flags for the interactive version.",
+            });
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
       const auth = await resolveAuth({
         apiKey: opts.apiKey,
@@ -113,28 +149,31 @@ export function registerSayCommand(program: Command): void {
       });
       const result = await synthesize(client, {
         input,
-        voiceId: opts.voice,
+        voiceId: voice,
         model: opts.model,
-        format: opts.format,
+        format,
         language: opts.language,
-        loudnessNormalization: opts.loudnessNormalization,
-        textNormalization: opts.textNormalization === false ? false : undefined,
+        loudnessNormalization,
+        textNormalization: textNormalization ? undefined : false,
       });
 
-      if (toStdout) {
+      if (out === "-") {
         process.stdout.write(result.audio);
-        logInfo(`Synthesized ${formatBytes(result.audio.length)} (${result.billableCharacters} billable characters).`);
+        logInfo(
+          `Synthesized ${formatBytes(result.audio.length)} (${result.billableCharacters} billable characters).`,
+          mode,
+        );
         return;
       }
 
-      const outPath = opts.out ?? `speech.${result.format}`;
+      const outPath = out ?? `speech.${result.format}`;
       await writeFile(outPath, result.audio);
 
-      if (opts.play) {
+      if (play) {
         try {
           await playAudio(outPath);
         } catch (err) {
-          if (err instanceof PlaybackUnavailableError) logWarning(err.message);
+          if (err instanceof PlaybackUnavailableError) logWarning(err.message, mode);
           else throw err;
         }
       }
@@ -152,6 +191,8 @@ export function registerSayCommand(program: Command): void {
           ),
         context: `Synthesized speech with voice "${opts.voice}" and saved it to ${outPath} (${result.format}).`,
         hints: [`Play it with \`afplay ${outPath}\` (macOS), or re-run with --play.`],
+        suggestedNextCommands: [`speechifyai say "${input}" --voice <voice-id>`, "speechifyai voices list"],
+        inputs: SAY_INPUTS,
       });
     });
 }

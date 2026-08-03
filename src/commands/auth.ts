@@ -140,14 +140,17 @@ export function registerAuthCommands(program: Command): void {
           context:
             "Stored an API key (replacing any previous console session). API keys reach the public TTS + scoped agent surface only — not workspace-scoped console endpoints.",
           hints: ['Synthesize with `speechifyai say "text"`, or list voices with `speechifyai voices list`.'],
+          suggestedNextCommands: ['speechifyai say "hello world"', "speechifyai voices list"],
         });
         return;
       }
 
       // The default browser flow needs a human at a terminal. Under an agent / CI /
       // non-TTY / --no-input, surface the non-interactive credential inputs instead.
-      if (!opts.refreshToken && !(await isInteractive(opts))) {
-        throw new NeedsInputError("login", LOGIN_INPUTS, ["refresh-token"]);
+      if (!opts.refreshToken && !(await isInteractive(opts, command))) {
+        throw new NeedsInputError("login", LOGIN_INPUTS, ["refresh-token"], {
+          interactiveHint: "On a terminal, run `speechifyai login` with no flags to open the browser flow.",
+        });
       }
       const session = await obtainSession(opts);
       // Validate the credential (and normalize the refresh token) before storing.
@@ -194,6 +197,11 @@ export function registerAuthCommands(program: Command): void {
           selected || workspaces.length === 0
             ? undefined
             : ["Select a workspace with `speechifyai workspace use <id>`."],
+        suggestedNextCommands:
+          selected || workspaces.length === 0
+            ? undefined
+            : [`speechifyai workspace use <id>`, 'speechifyai say "hello world"'],
+        inputs: LOGIN_INPUTS,
       });
     });
 

@@ -13,6 +13,7 @@ import {
   listApiKeys,
   updateApiKey,
 } from "../core/keys.js";
+import { promptText } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { emit, logInfo, logWarning, renderTable } from "../output.js";
 import { isInteractive, outputMode } from "../runtime.js";
@@ -72,6 +73,7 @@ export function registerKeysCommand(program: Command): void {
         },
         context: `Listed ${list.length} API key${list.length === 1 ? "" : "s"} in the workspace. Secrets are masked — the plaintext is only shown once, at create time.`,
         hints: ["Create one with `speechifyai keys create <name>`.", "Revoke one with `speechifyai keys revoke <id>`."],
+        suggestedNextCommands: ["speechifyai keys create <name>"],
       });
     });
 
@@ -86,14 +88,35 @@ export function registerKeysCommand(program: Command): void {
     .action(async (nameArg: string | undefined, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as CreateOptions;
       const mode = await outputMode(opts);
-      if (!nameArg) {
-        if (!(await isInteractive(opts))) throw new NeedsInputError("keys create", CREATE_INPUTS, ["name"]);
-        throw new CliError("A name is required: `speechifyai keys create <name>`.", {
-          exitCode: ExitCode.DATA_ERR,
-          code: "missing_input",
-        });
+      let name = nameArg;
+      let scopes = opts.scope;
+      if (!name) {
+        if (!(await isInteractive(opts, command))) {
+          throw new NeedsInputError("keys create", CREATE_INPUTS, ["name"], {
+            interactiveHint: "Or run `speechifyai keys create` with no flags for the interactive version.",
+          });
+        }
+        // Interactive: prompt for the name, then the scopes (Enter accepts the
+        // "full access" default). The secret still prints once to stdout.
+        name = await promptText("Name");
+        if (!scopes) {
+          for (;;) {
+            const answer = await promptText("Scopes (comma-separated; Enter for full access)", { defaultValue: "all" });
+            if (answer.trim().toLowerCase() === "all") break; // full access
+            const parsed = answer
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const invalid = parsed.filter((s) => !API_KEY_SCOPES.includes(s as ApiKeyScope));
+            if (invalid.length === 0) {
+              scopes = parsed as ApiKeyScope[];
+              break;
+            }
+            logWarning(`Unknown scope(s): ${invalid.join(", ")}. Valid scopes: ${API_KEY_SCOPES.join(", ")}.`);
+          }
+        }
       }
-      const created = await createApiKey(await consoleHttpClient(opts), { name: nameArg, scopes: opts.scope });
+      const created = await createApiKey(await consoleHttpClient(opts), { name, scopes });
 
       emit(mode, {
         data: created,
@@ -108,6 +131,8 @@ export function registerKeysCommand(program: Command): void {
           "Use the secret as `--api-key <secret>` or via $SPEECHIFY_API_KEY.",
           "List keys with `speechifyai keys list`.",
         ],
+        suggestedNextCommands: ["speechifyai keys list", `speechifyai say "hello" --api-key <secret>`],
+        inputs: CREATE_INPUTS,
       });
     });
 
@@ -176,6 +201,7 @@ export function registerKeysCommand(program: Command): void {
         human: () => logInfo(`Revoked API key ${id}.`),
         context: `Revoked API key ${id}. This is permanent — any client using it now gets 401.`,
         hints: ["List remaining keys with `speechifyai keys list`."],
+        suggestedNextCommands: ["speechifyai keys list"],
       });
     });
 }
