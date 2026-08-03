@@ -72,6 +72,7 @@ export function registerKeysCommand(program: Command): void {
         },
         context: `Listed ${list.length} API key${list.length === 1 ? "" : "s"} in the workspace. Secrets are masked — the plaintext is only shown once, at create time.`,
         hints: ["Create one with `speechifyai keys create <name>`.", "Revoke one with `speechifyai keys revoke <id>`."],
+        suggestedNextCommands: ["speechifyai keys create <name>"],
       });
     });
 
@@ -87,7 +88,7 @@ export function registerKeysCommand(program: Command): void {
       const opts = command.optsWithGlobals() as CreateOptions;
       const mode = await outputMode(opts);
       if (!nameArg) {
-        if (!(await isInteractive(opts))) throw new NeedsInputError("keys create", CREATE_INPUTS, ["name"]);
+        if (!(await isInteractive(opts, command))) throw new NeedsInputError("keys create", CREATE_INPUTS, ["name"]);
         throw new CliError("A name is required: `speechifyai keys create <name>`.", {
           exitCode: ExitCode.DATA_ERR,
           code: "missing_input",
@@ -108,6 +109,8 @@ export function registerKeysCommand(program: Command): void {
           "Use the secret as `--api-key <secret>` or via $SPEECHIFY_API_KEY.",
           "List keys with `speechifyai keys list`.",
         ],
+        suggestedNextCommands: ["speechifyai keys list", `speechifyai say "hello" --api-key <secret>`],
+        inputs: CREATE_INPUTS,
       });
     });
 
@@ -176,6 +179,7 @@ export function registerKeysCommand(program: Command): void {
         human: () => logInfo(`Revoked API key ${id}.`),
         context: `Revoked API key ${id}. This is permanent — any client using it now gets 401.`,
         hints: ["List remaining keys with `speechifyai keys list`."],
+        suggestedNextCommands: ["speechifyai keys list"],
       });
     });
 }

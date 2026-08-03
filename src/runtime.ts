@@ -3,6 +3,7 @@
 // Pure helpers that take the already-resolved command options (from
 // `command.optsWithGlobals()`), rather than a global RunContext singleton — this
 // keeps each command in charge of its own opts and avoids hidden process state.
+import type { Command } from "commander";
 import type { GlobalOptions } from "./options.js";
 
 export type OutputMode = "human" | "json" | "agent";
@@ -63,14 +64,48 @@ export async function outputMode(opts: Pick<GlobalOptions, "json" | "agentFriend
 }
 
 /**
- * Whether the CLI may block on interactive input. False whenever prompting would
- * hang or surprise a caller: `--no-input` (commander sets `input === false`), CI,
- * a non-TTY on either end, or a detected agent. Commands use this to decide
- * between prompting (never, today) and returning a structured needs-input spec.
+ * Whether any option was explicitly passed on this command's command line.
+ * Walks the command + ancestor chain so global options (defined on the root
+ * program, e.g. --base-url) count too, not just the subcommand's own options.
+ * `getOptionValueSource` distinguishes "cli" (typed by the caller) from
+ * "default", "env", and "config" — so an option merely resolved from an env var
+ * or a commander default does NOT count as an explicit signal.
  */
-export async function isInteractive(opts: Pick<GlobalOptions, "input">): Promise<boolean> {
+function hasExplicitCliFlag(command: Command): boolean {
+  let current: Command | undefined = command;
+  while (current) {
+    for (const option of current.options) {
+      if (current.getOptionValueSource(option.attributeName()) === "cli") return true;
+    }
+    current = current.parent ?? undefined;
+  }
+  return false;
+}
+
+/**
+ * Whether the CLI may fall into an interactive (human-only) path — today, the
+ * browser login flow. False whenever the invocation must stay deterministic:
+ * `--no-input`, `--agent-friendly`, CI, a non-TTY on either end, a detected
+ * agent, or **any flag/positional provided on the command line** (a caller who
+ * supplied input expects non-interactive behavior; missing input is returned as
+ * a structured needs-input error, exit 2, rather than prompting). Commands use
+ * this to decide between the interactive path and the needs-input error.
+ */
+export async function isInteractive(
+  opts: Pick<GlobalOptions, "input" | "agentFriendly">,
+  command?: Command,
+): Promise<boolean> {
   if (opts.input === false) return false;
+  if (opts.agentFriendly) return false;
   if (process.env.CI) return false;
   if (!(process.stdin.isTTY && process.stdout.isTTY)) return false;
-  return !(await detectAgent()).isAgent;
+  if ((await detectAgent()).isAgent) return false;
+  // Any flag or positional on the command line makes the invocation
+  // deterministic: a bare `speechifyai login` may open the browser, but
+  // `login --base-url …` must never fall into a prompting path.
+  if (command) {
+    if (command.args.length > 0) return false;
+    if (hasExplicitCliFlag(command)) return false;
+  }
+  return true;
 }

@@ -1,6 +1,6 @@
 // Tiny output helpers. Human status goes to stderr so stdout stays clean for
 // piping (e.g. `--out -` or `--json`).
-import type { NeedsInputError } from "./core/errors.js";
+import type { InputField, NeedsInputError } from "./core/errors.js";
 import type { OutputMode } from "./runtime.js";
 
 export function printJson(value: unknown): void {
@@ -17,14 +17,20 @@ export interface ResultSpec {
   context?: string;
   /** Optional next-step hints for agents. */
   hints?: string[];
+  /** Runnable next commands for the caller (agent mode: `suggested_next_commands` + stderr guidance). */
+  suggestedNextCommands?: string[];
+  /** Full input/usage spec for this command (agent mode: `inputs`). */
+  inputs?: InputField[];
 }
 
 /**
  * Emit a successful result in the active output mode:
  *   - human: call `spec.human()` (tables to stdout, notes to stderr).
  *   - json:  write `spec.data` as a bare machine payload (no wrapper).
- *   - agent: write `{ ok, data, context, hints }` so agents get the data plus
- *            an explanation and next steps.
+ *   - agent: write `{ ok, data, context, hints, suggested_next_commands, inputs }`
+ *            so agents get the data plus an explanation, next steps, and the
+ *            command's full input spec; the same next commands are also printed
+ *            to stderr as a "Common next commands:" block (stdout stays pure JSON).
  */
 export function emit(mode: OutputMode, spec: ResultSpec): void {
   switch (mode) {
@@ -34,9 +40,21 @@ export function emit(mode: OutputMode, spec: ResultSpec): void {
     case "json":
       printJson(spec.data);
       return;
-    case "agent":
-      printJson({ ok: true, data: spec.data, context: spec.context, hints: spec.hints });
+    case "agent": {
+      const payload: Record<string, unknown> = {
+        ok: true,
+        data: spec.data,
+        context: spec.context,
+        hints: spec.hints,
+      };
+      if (spec.suggestedNextCommands?.length) payload.suggested_next_commands = spec.suggestedNextCommands;
+      if (spec.inputs?.length) payload.inputs = spec.inputs;
+      printJson(payload);
+      if (spec.suggestedNextCommands?.length) {
+        process.stderr.write(`Common next commands:\n${spec.suggestedNextCommands.map((c) => `- ${c}`).join("\n")}\n`);
+      }
       return;
+    }
   }
 }
 
@@ -79,11 +97,15 @@ export function emitNeedsInput(err: NeedsInputError, mode: OutputMode): void {
   printJson(needsInputPayload(err));
 }
 
-export function logInfo(message: string): void {
+export function logInfo(message: string, mode?: OutputMode): void {
+  // Agents read the structured payload; skip informational chatter on stderr.
+  if (mode === "agent") return;
   process.stderr.write(`${message}\n`);
 }
 
-export function logWarning(message: string): void {
+export function logWarning(message: string, mode?: OutputMode): void {
+  // Agents read the exit code + stdout payload; skip warning chatter on stderr.
+  if (mode === "agent") return;
   process.stderr.write(`warning: ${message}\n`);
 }
 

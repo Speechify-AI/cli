@@ -93,7 +93,7 @@ export function registerSayCommand(program: Command): void {
       try {
         input = await resolveTextInput(textArg, opts.inputFile);
       } catch (err) {
-        if (err instanceof CliError && err.code === "missing_input" && !(await isInteractive(opts))) {
+        if (err instanceof CliError && err.code === "missing_input" && !(await isInteractive(opts, command))) {
           throw new NeedsInputError("say", SAY_INPUTS, ["text"]);
         }
         throw err;
@@ -123,7 +123,10 @@ export function registerSayCommand(program: Command): void {
 
       if (toStdout) {
         process.stdout.write(result.audio);
-        logInfo(`Synthesized ${formatBytes(result.audio.length)} (${result.billableCharacters} billable characters).`);
+        logInfo(
+          `Synthesized ${formatBytes(result.audio.length)} (${result.billableCharacters} billable characters).`,
+          mode,
+        );
         return;
       }
 
@@ -134,7 +137,7 @@ export function registerSayCommand(program: Command): void {
         try {
           await playAudio(outPath);
         } catch (err) {
-          if (err instanceof PlaybackUnavailableError) logWarning(err.message);
+          if (err instanceof PlaybackUnavailableError) logWarning(err.message, mode);
           else throw err;
         }
       }
@@ -152,6 +155,8 @@ export function registerSayCommand(program: Command): void {
           ),
         context: `Synthesized speech with voice "${opts.voice}" and saved it to ${outPath} (${result.format}).`,
         hints: [`Play it with \`afplay ${outPath}\` (macOS), or re-run with --play.`],
+        suggestedNextCommands: [`speechifyai say "${input}" --voice <voice-id>`, "speechifyai voices list"],
+        inputs: SAY_INPUTS,
       });
     });
 }

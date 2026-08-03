@@ -11,6 +11,7 @@ import { fetchWithTimeout } from "../core/fetchWithTimeout.js";
 import { readStdin } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { logWarning } from "../output.js";
+import { outputMode } from "../runtime.js";
 
 export interface ApiOptions {
   method?: string;
@@ -96,6 +97,7 @@ export function registerApiCommand(program: Command): void {
     .option("-i, --include", "include the response status line and headers in the output")
     .action(async (endpoint: string, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions & ApiOptions;
+      const mode = await outputMode(opts);
       const auth = await resolveAuth({
         apiKey: opts.apiKey,
         apiVersion: opts.apiVersion,
@@ -126,7 +128,7 @@ export function registerApiCommand(program: Command): void {
       // The response body is the output (stdout); on failure, note it to stderr
       // and set a sysexits-aligned exit code rather than throwing.
       if (!res.ok) {
-        logWarning(`Request failed: HTTP ${res.status} ${res.statusText}`);
+        logWarning(`Request failed: HTTP ${res.status} ${res.statusText}`, mode);
         process.exitCode = exitCodeForStatus(res.status);
       }
     });

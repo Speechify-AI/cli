@@ -1,3 +1,4 @@
+import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Control @vercel/detect-agent (dynamically imported inside runtime.ts).
@@ -108,5 +109,48 @@ describe("isInteractive", () => {
     setTTY(true);
     setAgent(true);
     expect(await isInteractive({})).toBe(false);
+  });
+
+  it("false when --agent-friendly is passed", async () => {
+    setTTY(true);
+    setAgent(false);
+    expect(await isInteractive({ agentFriendly: true })).toBe(false);
+  });
+
+  it("false when a positional argument is present", async () => {
+    setTTY(true);
+    setAgent(false);
+    const cmd = new Command();
+    cmd.args.push("hello world");
+    expect(await isInteractive({}, cmd)).toBe(false);
+  });
+
+  it("false when any option was passed on the command line", async () => {
+    setTTY(true);
+    setAgent(false);
+    const cmd = new Command().option("--base-url <url>");
+    cmd.setOptionValueWithSource("baseUrl", "https://example.com", "cli");
+    expect(await isInteractive({}, cmd)).toBe(false);
+  });
+
+  it("false for a flag on an ancestor command (global options count)", async () => {
+    setTTY(true);
+    setAgent(false);
+    const parent = new Command("speechifyai").option("--api-key <key>");
+    const child = new Command("say");
+    parent.addCommand(child);
+    // commander stores the value source on the command that owns the option
+    // (the root program for globals), which is exactly what the ancestor walk
+    // exists to catch.
+    parent.setOptionValueWithSource("apiKey", "sk-test", "cli");
+    expect(await isInteractive({}, child)).toBe(false);
+  });
+
+  it("true when an option was resolved from env, not the command line", async () => {
+    setTTY(true);
+    setAgent(false);
+    const cmd = new Command().option("--base-url <url>");
+    cmd.setOptionValueWithSource("baseUrl", "https://example.com", "env");
+    expect(await isInteractive({}, cmd)).toBe(true);
   });
 });
