@@ -1,17 +1,15 @@
 // Shared text-to-speech service. The `say` command calls synthesize(); it never
 // talks to the SDK directly.
 import type { Speechify, SpeechifyClient } from "@speechify/api";
+import { SPEECH_MODELS } from "../generated/models.js";
 import { CliError, ExitCode } from "./errors.js";
 
 export type AudioFormat = Speechify.GetSpeechRequest.AudioFormat;
-export type SpeechModel = Speechify.GetSpeechRequest.Model;
+export type SpeechModel = (typeof SPEECH_MODELS)[number];
+
+export { SPEECH_MODELS };
 
 export const AUDIO_FORMATS = ["wav", "mp3", "ogg", "aac", "pcm"] as const satisfies readonly AudioFormat[];
-export const SPEECH_MODELS = [
-  "simba-english",
-  "simba-multilingual",
-  "simba-3.0",
-] as const satisfies readonly SpeechModel[];
 
 export const DEFAULT_VOICE = "george";
 export const DEFAULT_FORMAT: AudioFormat = "mp3";
@@ -65,7 +63,7 @@ export async function synthesize(client: SpeechifyClient, opts: SynthOptions): P
     input: opts.input,
     voice_id: opts.voiceId ?? DEFAULT_VOICE,
     audio_format: opts.format ?? DEFAULT_FORMAT,
-    ...(opts.model ? { model: opts.model } : {}),
+    ...(opts.model ? { model: opts.model as Speechify.GetSpeechRequest.Model } : {}),
     ...(opts.language ? { language: opts.language } : {}),
     ...(hasOptions
       ? {
