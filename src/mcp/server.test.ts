@@ -5,8 +5,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// v2 SDK shape: client.audio.speech() / client.voices.list(). SpeechifyError is
+// SDK shape: client.audio.speech() / client.voices.list(). SpeechifyError is
 // pulled in transitively by core/errors.ts, so the mock must export it too.
+// list() resolves to a plain array here — `for await` in core/voices.ts adapts
+// sync iterables, so the paginated Page shape needs no mock mirror.
 const sdk = vi.hoisted(() => ({ speech: vi.fn(), list: vi.fn() }));
 vi.mock("@speechify/api", () => ({
   SpeechifyClient: class {
@@ -75,7 +77,7 @@ describe("buildServer tool registration", () => {
 });
 
 describe("list_voices tool", () => {
-  it("returns the voices mapped from the v2 SDK", async () => {
+  it("returns the voices mapped from the v3 SDK", async () => {
     sdk.list.mockResolvedValue([
       {
         id: "george",

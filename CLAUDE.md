@@ -14,6 +14,8 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
 - **Works today:** `login` / `logout` / `whoami`, `workspace list|use|current`,
   `say`, `voices list`, `keys` (API-key management), `usage` (request log +
   analytics), `api` (gh-style raw passthrough), `mcp` (MCP server).
+- **Alpha:** `mcp` — the tool implementations are expected to move to a hosted
+  server, with `speechifyai mcp` becoming a relay to it. Treat it as unstable.
 - **Blocked (backend gap):** a complete browser `login` needs console-side
   `/cli/login` (page) + `/cli/token` (exchange) endpoints — **they don't exist
   yet**. The CLI side is built + tested as a PKCE auth-code flow (RFC 8252/7636):
@@ -89,14 +91,16 @@ adapters — never call the SDK or fetch directly from a command.
 - Commit style: conventional commits (`feat:`, `fix:`, …). End commit messages with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 
-## `@speechify/api` SDK facts (v2)
+## `@speechify/api` SDK facts (v3)
 
 `new SpeechifyClient({ apiKey: <bearer>, headers })`; methods are
 `client.audio.speech(...)` / `client.voices.list()` (NOT `client.tts.*`). Fields
-are **snake_case** (`voice_id`, `audio_format`). `voices.list()` returns a bare
-`GetVoice[]` (it predates the paginated-envelope change). `SpeechifyError` carries
-`.statusCode` + `.body` (the `{ error: { code, message, fields }, request_id }`
-envelope). It accepts a Firebase ID token as the Bearer, so TTS works in console mode.
+are **snake_case** (`voice_id`, `audio_format`). `voices.list()` returns a
+paginated `Page` — an **async iterable**, iterated with `for await (const voice
+of client.voices.list())` in `core/voices.ts` (follows pages to exhaustion).
+`SpeechifyError` carries `.statusCode` + `.body` (the
+`{ error: { code, message, fields }, request_id }` envelope). It accepts a
+Firebase ID token as the Bearer, so TTS works in console mode.
 
 ## Active work
 
