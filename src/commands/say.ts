@@ -15,7 +15,7 @@ import {
   type SpeechModel,
   synthesize,
 } from "../core/speech.js";
-import { resolveTextInput } from "../io.js";
+import { promptText, resolveTextInput } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { emit, formatBytes, logInfo, logWarning } from "../output.js";
 import { isInteractive, outputMode } from "../runtime.js";
@@ -39,7 +39,7 @@ const SAY_INPUTS: InputField[] = [
     name: "text",
     description: "Text to synthesize",
     required: true,
-    flag: "<text> (positional), --input-file <path>, or piped stdin",
+    flag: "--input <text>, <text> (positional), --input-file <path>, or piped stdin",
   },
   {
     name: "voice",
@@ -72,6 +72,7 @@ export function registerSayCommand(program: Command): void {
     .option("--play", "play the audio after synthesis")
     .option("--loudness-normalization", "normalize loudness to -14 LUFS")
     .option("--no-text-normalization", "keep numbers/dates as written instead of spelled out")
+    .option("--input <text>", "text to synthesize (alternative to the positional argument)")
     .option("--input-file <path>", "read input text from a file")
     .action(async (textArg: string | undefined, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as SayOptions;
@@ -86,17 +87,30 @@ export function registerSayCommand(program: Command): void {
         });
       }
 
-      // Resolve text from positional/--input-file/stdin. When none is available
-      // and we can't prompt (agent, CI, non-TTY, --no-input), return a structured
-      // needs-input spec (exit 2) instead of a generic data error.
+      // Resolve text from positional/--input/--input-file/stdin. With no input
+      // source at all, a *bare* `say` on a real TTY (no flags/args) prompts
+      // interactively; any flagged/arg'd or non-interactive (CI, agent, non-TTY,
+      // --no-input) invocation returns a structured needs-input spec (exit 2)
+      // that says exactly what to provide.
+      // NOTE: `--input <text>` shares the `input` attribute name with the global
+      // `--no-input` flag; optsWithGlobals() merges globals-over-locals, so the
+      // flagged text must be read from the subcommand's own store.
+      const flaggedText = command.getOptionValue("input") as string | undefined;
       let input: string;
       try {
-        input = await resolveTextInput(textArg, opts.inputFile);
+        input = await resolveTextInput(textArg, opts.inputFile, flaggedText);
       } catch (err) {
-        if (err instanceof CliError && err.code === "missing_input" && !(await isInteractive(opts, command))) {
-          throw new NeedsInputError("say", SAY_INPUTS, ["text"]);
+        if (err instanceof CliError && err.code === "missing_input") {
+          if (await isInteractive(opts, command)) {
+            input = await promptText("Text-to-Speech");
+          } else {
+            throw new NeedsInputError("say", SAY_INPUTS, ["text"], {
+              interactiveHint: "Or run `speechifyai say` with no flags for the interactive version.",
+            });
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
       const auth = await resolveAuth({
         apiKey: opts.apiKey,

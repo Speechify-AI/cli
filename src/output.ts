@@ -91,6 +91,7 @@ export function emitNeedsInput(err: NeedsInputError, mode: OutputMode): void {
       const values = f.enum ? ` — one of: ${f.enum.join(", ")}` : "";
       msg += `  • ${f.flag ?? f.name}${req}: ${f.description}${def}${values}\n`;
     }
+    if (err.interactiveHint) msg += `\n${err.interactiveHint}\n`;
     process.stderr.write(msg);
     return;
   }

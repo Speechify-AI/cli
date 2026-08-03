@@ -13,6 +13,7 @@ vi.mock("../io.js", () => ({
     .fn()
     .mockRejectedValue(new CliError("No input text.", { exitCode: ExitCode.DATA_ERR, code: "missing_input" })),
   readStdin: vi.fn(),
+  promptText: vi.fn(),
 }));
 
 import { registerSayCommand } from "./say.js";

@@ -1,5 +1,7 @@
-// Input helpers: reading the text to synthesize and reading piped stdin.
+// Input helpers: reading the text to synthesize, reading piped stdin, and
+// prompting for input on an interactive TTY.
 import { readFile } from "node:fs/promises";
+import { createInterface } from "node:readline";
 import { CliError, ExitCode } from "./core/errors.js";
 
 export function readStdin(): Promise<string> {
@@ -64,16 +66,23 @@ export function readStdinWithFirstByteTimeout(firstByteTimeoutMs: number): Promi
   });
 }
 
-// Resolve text from (in precedence order): --input-file, a positional argument,
-// or piped stdin (when the arg is "-" or stdin isn't a TTY).
-export async function resolveTextInput(positional: string | undefined, inputFile: string | undefined): Promise<string> {
+// Resolve text from (in precedence order): --input-file, --input, a positional
+// argument, or piped stdin (when the value is "-" or stdin isn't a TTY).
+export async function resolveTextInput(
+  positional: string | undefined,
+  inputFile: string | undefined,
+  input?: string,
+): Promise<string> {
   if (inputFile) {
     return readFile(inputFile, "utf8");
+  }
+  if (input !== undefined && input !== "-") {
+    return input;
   }
   if (positional !== undefined && positional !== "-") {
     return positional;
   }
-  if (positional === "-") {
+  if (positional === "-" || input === "-") {
     // Explicit request to read stdin — block until the writer closes.
     const piped = await readStdin();
     if (piped.trim().length > 0) return piped;
@@ -83,8 +92,31 @@ export async function resolveTextInput(positional: string | undefined, inputFile
     const piped = await readStdinWithFirstByteTimeout(STDIN_FIRST_BYTE_TIMEOUT_MS);
     if (piped !== null && piped.trim().length > 0) return piped;
   }
-  throw new CliError("No input text. Pass text as an argument, use --input-file, or pipe it via stdin.", {
-    exitCode: ExitCode.DATA_ERR,
-    code: "missing_input",
-  });
+  throw new CliError(
+    "No input text. Pass text via --input <text>, as an argument, use --input-file <path>, or pipe it via stdin.",
+    {
+      exitCode: ExitCode.DATA_ERR,
+      code: "missing_input",
+    },
+  );
+}
+
+/**
+ * Prompt for a required value on an interactive TTY (readline over stdin, with
+ * the prompt itself written to stderr so stdout stays clean for machine
+ * output). Re-prompts until a non-empty, trimmed answer is given.
+ */
+export async function promptText(prompt: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    for (;;) {
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`${prompt}: `, resolve);
+      });
+      const trimmed = answer.trim();
+      if (trimmed) return trimmed;
+    }
+  } finally {
+    rl.close();
+  }
 }
