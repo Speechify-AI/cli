@@ -101,20 +101,56 @@ export async function resolveTextInput(
   );
 }
 
+/** Options for interactive prompts. */
+export interface PromptOptions {
+  /**
+   * Value accepted when the user presses Enter without typing. Shown in the
+   * prompt (e.g. `Voice [george]: `) so a bare Enter walks the wizard through.
+   */
+  defaultValue?: string;
+}
+
 /**
- * Prompt for a required value on an interactive TTY (readline over stdin, with
- * the prompt itself written to stderr so stdout stays clean for machine
- * output). Re-prompts until a non-empty, trimmed answer is given.
+ * Prompt for a value on an interactive TTY (readline over stdin, with the prompt
+ * itself written to stderr so stdout stays clean for machine output).
+ * Re-prompts until a non-empty, trimmed answer is given — or, when a default
+ * exists, returns the default on an empty (Enter) answer.
  */
-export async function promptText(prompt: string): Promise<string> {
+export async function promptText(prompt: string, options: PromptOptions = {}): Promise<string> {
+  const { defaultValue } = options;
+  const suffix = defaultValue === undefined ? "" : ` [${defaultValue}]`;
   const rl = createInterface({ input: process.stdin, output: process.stderr });
   try {
     for (;;) {
       const answer = await new Promise<string>((resolve) => {
-        rl.question(`${prompt}: `, resolve);
+        rl.question(`${prompt}${suffix}: `, resolve);
       });
       const trimmed = answer.trim();
       if (trimmed) return trimmed;
+      if (defaultValue !== undefined) return defaultValue;
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * Prompt for a yes/no answer on an interactive TTY. An empty (Enter) answer
+ * accepts `defaultValue` (shown as [Y/n] / [y/N]); typed answers must be a
+ * yes/no variant (y/yes/n/no), anything else re-prompts.
+ */
+export async function promptConfirm(prompt: string, defaultValue = false): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    const suffix = defaultValue ? " [Y/n]" : " [y/N]";
+    for (;;) {
+      const answer = await new Promise<string>((resolve) => {
+        rl.question(`${prompt}${suffix}: `, resolve);
+      });
+      const trimmed = answer.trim().toLowerCase();
+      if (trimmed === "") return defaultValue;
+      if (trimmed === "y" || trimmed === "yes") return true;
+      if (trimmed === "n" || trimmed === "no") return false;
     }
   } finally {
     rl.close();

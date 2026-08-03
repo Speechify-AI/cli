@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hermetic: never a real agent, never touch the keychain, never hit the network.
 vi.mock("@vercel/detect-agent", () => ({
@@ -17,6 +17,16 @@ vi.mock("../core/keys.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/keys.js")>()),
   createApiKey: createApiKeyMock,
 }));
+// The interactive branch only runs when isInteractive() is true — tests opt in.
+const { isInteractiveMock, promptTextMock } = vi.hoisted(() => ({
+  isInteractiveMock: vi.fn(),
+  promptTextMock: vi.fn(),
+}));
+vi.mock("../runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../runtime.js")>()),
+  isInteractive: isInteractiveMock,
+}));
+vi.mock("../io.js", () => ({ promptText: promptTextMock }));
 
 import { registerKeysCommand } from "./keys.js";
 
@@ -54,6 +64,10 @@ function capture() {
     },
   };
 }
+
+beforeEach(() => {
+  isInteractiveMock.mockResolvedValue(false);
+});
 
 afterEach(() => vi.clearAllMocks());
 
@@ -105,5 +119,59 @@ describe("keys create — success", () => {
       cap.restore();
     }
     expect(JSON.parse(cap.stdout()).apiKey).toBe("sk_secret");
+  });
+});
+
+describe("keys create — interactive wizard (bare on a TTY)", () => {
+  it("prompts for name and scopes; Enter-through yields full access", async () => {
+    isInteractiveMock.mockResolvedValue(true);
+    promptTextMock.mockResolvedValueOnce("my key").mockResolvedValueOnce("all");
+    createApiKeyMock.mockResolvedValue({
+      id: "key_1",
+      name: "my key",
+      apiKey: "sk_secret",
+      scopes: [],
+      createdAt: "x",
+      updatedAt: "x",
+    });
+    const cap = capture();
+    try {
+      await buildProgram().parseAsync(["node", "speechifyai", "keys", "create"]);
+    } finally {
+      cap.restore();
+    }
+    expect(promptTextMock).toHaveBeenNthCalledWith(1, "Name");
+    expect(promptTextMock).toHaveBeenNthCalledWith(2, "Scopes (comma-separated; Enter for full access)", {
+      defaultValue: "all",
+    });
+    expect(createApiKeyMock).toHaveBeenCalledWith(expect.anything(), { name: "my key", scopes: undefined });
+    expect(cap.stdout()).toContain("sk_secret");
+  });
+
+  it("parses a typed scope list and warns on unknown scopes", async () => {
+    isInteractiveMock.mockResolvedValue(true);
+    promptTextMock
+      .mockResolvedValueOnce("my key")
+      .mockResolvedValueOnce("voices:read, voices:write, bogus")
+      .mockResolvedValueOnce("voices:read, voices:write");
+    createApiKeyMock.mockResolvedValue({
+      id: "key_1",
+      name: "my key",
+      apiKey: "sk_secret",
+      scopes: ["voices:read", "voices:write"],
+      createdAt: "x",
+      updatedAt: "x",
+    });
+    const cap = capture();
+    try {
+      await buildProgram().parseAsync(["node", "speechifyai", "keys", "create"]);
+    } finally {
+      cap.restore();
+    }
+    expect(createApiKeyMock).toHaveBeenCalledWith(expect.anything(), {
+      name: "my key",
+      scopes: ["voices:read", "voices:write"],
+    });
+    expect(cap.stderr()).toMatch(/Unknown scope/);
   });
 });

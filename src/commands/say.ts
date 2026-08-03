@@ -15,7 +15,7 @@ import {
   type SpeechModel,
   synthesize,
 } from "../core/speech.js";
-import { promptText, resolveTextInput } from "../io.js";
+import { promptConfirm, promptText, resolveTextInput } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { emit, formatBytes, logInfo, logWarning } from "../output.js";
 import { isInteractive, outputMode } from "../runtime.js";
@@ -97,12 +97,34 @@ export function registerSayCommand(program: Command): void {
       // flagged text must be read from the subcommand's own store.
       const flaggedText = command.getOptionValue("input") as string | undefined;
       let input: string;
+      // Mutable mirrors of the options: the interactive wizard below prompts for
+      // each of these, so a bare `say` can override the flag defaults.
+      let voice = opts.voice;
+      let format = opts.format;
+      let out = opts.out;
+      let play = opts.play ?? false;
+      let loudnessNormalization = opts.loudnessNormalization ?? false;
+      let textNormalization = opts.textNormalization !== false;
       try {
         input = await resolveTextInput(textArg, opts.inputFile, flaggedText);
       } catch (err) {
         if (err instanceof CliError && err.code === "missing_input") {
           if (await isInteractive(opts, command)) {
+            // Bare `say` on a real TTY (no flags/args): the full interactive
+            // wizard. Every option is prompted with a sensible default, so
+            // Enter-through works — type the text, then mash Enter.
             input = await promptText("Text-to-Speech");
+            voice = await promptText("Voice", { defaultValue: voice });
+            do {
+              format = (await promptText("Format", { defaultValue: format })) as AudioFormat;
+              if (!AUDIO_FORMATS.includes(format)) {
+                logWarning(`Unknown format "${format}" — choose one of: ${AUDIO_FORMATS.join(", ")}.`);
+              }
+            } while (!AUDIO_FORMATS.includes(format));
+            out = await promptText("Output file", { defaultValue: out ?? `speech.${format}` });
+            play = await promptConfirm("Play audio after synthesis", play);
+            loudnessNormalization = await promptConfirm("Loudness normalization", loudnessNormalization);
+            textNormalization = await promptConfirm("Text normalization", textNormalization);
           } else {
             throw new NeedsInputError("say", SAY_INPUTS, ["text"], {
               interactiveHint: "Or run `speechifyai say` with no flags for the interactive version.",
@@ -127,15 +149,15 @@ export function registerSayCommand(program: Command): void {
       });
       const result = await synthesize(client, {
         input,
-        voiceId: opts.voice,
+        voiceId: voice,
         model: opts.model,
-        format: opts.format,
+        format,
         language: opts.language,
-        loudnessNormalization: opts.loudnessNormalization,
-        textNormalization: opts.textNormalization === false ? false : undefined,
+        loudnessNormalization,
+        textNormalization: textNormalization ? undefined : false,
       });
 
-      if (toStdout) {
+      if (out === "-") {
         process.stdout.write(result.audio);
         logInfo(
           `Synthesized ${formatBytes(result.audio.length)} (${result.billableCharacters} billable characters).`,
@@ -144,10 +166,10 @@ export function registerSayCommand(program: Command): void {
         return;
       }
 
-      const outPath = opts.out ?? `speech.${result.format}`;
+      const outPath = out ?? `speech.${result.format}`;
       await writeFile(outPath, result.audio);
 
-      if (opts.play) {
+      if (play) {
         try {
           await playAudio(outPath);
         } catch (err) {

@@ -148,7 +148,9 @@ export function registerAuthCommands(program: Command): void {
       // The default browser flow needs a human at a terminal. Under an agent / CI /
       // non-TTY / --no-input, surface the non-interactive credential inputs instead.
       if (!opts.refreshToken && !(await isInteractive(opts, command))) {
-        throw new NeedsInputError("login", LOGIN_INPUTS, ["refresh-token"]);
+        throw new NeedsInputError("login", LOGIN_INPUTS, ["refresh-token"], {
+          interactiveHint: "On a terminal, run `speechifyai login` with no flags to open the browser flow.",
+        });
       }
       const session = await obtainSession(opts);
       // Validate the credential (and normalize the refresh token) before storing.
