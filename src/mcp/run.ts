@@ -18,8 +18,8 @@ export interface McpOptions {
 function logStatus(transport: string): void {
   process.stderr.write(
     `SpeechifyAI MCP server (alpha) ready on ${transport}\n` +
-      "Tools: search_docs, list_voices, text_to_speech " +
-      "(list_voices + text_to_speech need a `speechifyai login` session or SPEECHIFY_API_KEY; auth is resolved per call)\n",
+      "Tools: search_docs, list_voices, get_voice, text_to_speech " +
+      "(everything but search_docs needs a `speechifyai login` session or SPEECHIFY_API_KEY; auth is resolved per call)\n",
   );
 }
 

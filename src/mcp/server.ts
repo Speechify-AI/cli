@@ -16,7 +16,7 @@ import { z } from "zod";
 import { type AuthInput, requireWorkspace, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
 import { AUDIO_FORMATS, AUDIO_MIME, DEFAULT_VOICE, SPEECH_MODELS, synthesize } from "../core/speech.js";
-import { listVoices } from "../core/voices.js";
+import { getVoice, listVoices } from "../core/voices.js";
 
 /** Public, unauthenticated docs MCP server hosted by Fern for docs.speechify.ai. */
 const DOCS_MCP_URL = "https://docs.speechify.ai/_mcp/server";
@@ -97,6 +97,21 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
     async () => {
       const voices = await listVoices(await ttsClient());
       return { content: [{ type: "text", text: JSON.stringify(voices, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "get_voice",
+    {
+      description:
+        "Fetch one Speechify voice by id, with the models it supports, the locales each model covers, its tags, and its preview URLs. Use it to confirm a voice id is usable before synthesizing, instead of listing the whole catalog. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+      inputSchema: {
+        voiceId: z.string().describe("Id of the voice to fetch (see list_voices), e.g. 'george'"),
+      },
+    },
+    async ({ voiceId }) => {
+      const voice = await getVoice(await ttsClient(), voiceId);
+      return { content: [{ type: "text", text: JSON.stringify(voice, null, 2) }] };
     },
   );
 
