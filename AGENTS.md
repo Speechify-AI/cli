@@ -88,8 +88,61 @@ adapters — never call the SDK or fetch directly from a command.
 - Errors: everything resolves through `normalizeError`; exit codes are sysexits
   (78 config/auth-missing, 77 auth, 75 rate-limit, 65 data, 69 upstream) — plus
   `2` reserved for `NeedsInputError` (missing required input, non-interactive).
+- Input/interactivity: see **Command input model** below — global flags never
+  make a command non-interactive; any command flag or argument does.
 - Commit style: conventional commits (`feat:`, `fix:`, …). End commit messages with:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+
+## Command input model
+
+The one rule a new command has to get right. It decides, for every invocation,
+whether the CLI may block on a human.
+
+**Global flags** are the ones in `GLOBAL_OPTIONS` (`bin.ts`), hung off every
+command by `applyGlobalOptions`: `--api-key`, `--workspace`, `--api-version`,
+`--base-url`, `--json`, `--agent-friendly`, `--no-input` — plus anything added
+there later (a future `--dry-run`). They say *how* a command runs.
+
+**Command input** is everything else: positional arguments, command-scoped flags
+(`--voice`, `--scope`, `--stream`), `--input-file`, piped stdin. It says *what*
+the command runs on.
+
+1. **Global flags never flip the mode.** `say --json`, `say --api-key k` and
+   `say --workspace ws_x` with no text are all the same case as a bare `say`.
+2. **Any command input ⇒ the command is binary.** It either runs, or it stops
+   and says it needs more input. It never prompts. Passing one flag is the
+   signal that you are scripting, not sitting at a prompt.
+3. **No command input ⇒ interactive.** A bare command, on a TTY at both ends,
+   not CI, not an agent, no `--no-input`, walks the caller through the inputs it
+   expects — its `InputField[]`, one at a time, in order.
+4. **Agent mode and CI are never interactive**, whatever else is true. Same for
+   `--no-input` and a non-TTY on either end. That is what `isInteractive()`
+   answers.
+5. **Needs-input always lists the whole input set**, not just what is missing,
+   and in human mode as well as json/agent. `output.ts#emitNeedsInput` is the
+   single renderer for it; exit code 2.
+
+**Status: prompting is not built yet.** `isInteractive()` today answers only
+"*could* we prompt" (env, TTY, agent, `--no-input`) — never "*should* we" (rule
+2, whether command input was supplied). Until the prompt loop lands, a command
+missing required input throws `NeedsInputError` when non-interactive, and a
+`missing_input` `CliError` (65) naming the exact command to run when
+interactive. Write new commands to the model above and nothing has to be
+rewritten when it does land — commander's `command.getOptionValueSource(name)
+=== "cli"` is how rule 2 will tell a supplied flag from a defaulted one.
+
+Practical consequences:
+
+- **One `InputField[]` per command, complete and current.** Adding a flag means
+  updating that const in the same commit. A flag missing from the spec is
+  invisible to every agent that hits the needs-input path.
+- **"You need to pass X or Y" is needs-input, not a data error.** If the fix is
+  another flag, say so with the structured spec rather than a prose 65.
+- **Mode flags don't fit.** A flag that changes what other flags mean or which
+  values they accept (a `--stream` that narrows `--format` and gates
+  `--output-format`) can't be expressed in a flat `InputField[]`, so the
+  interactive walk can't branch on it either. Prefer a subcommand with its own
+  flat input set, or extend `InputField` deliberately.
 
 ## `@speechify/api` SDK facts (v3)
 
