@@ -5,15 +5,15 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// SDK shape: client.audio.speech() / client.voices.list() / client.voices.get().
-// SpeechifyError is pulled in transitively by core/errors.ts, so the mock must
-// export it too. list() resolves to a plain array here — `for await` in
-// core/voices.ts adapts sync iterables, so the paginated Page shape needs no
-// mock mirror.
-const sdk = vi.hoisted(() => ({ speech: vi.fn(), list: vi.fn(), get: vi.fn() }));
+// SDK shape: client.audio.speech() / client.audio.stream() / client.voices.list()
+// / client.voices.get(). SpeechifyError is pulled in transitively by
+// core/errors.ts, so the mock must export it too. list() resolves to a plain
+// array here — `for await` in core/voices.ts adapts sync iterables, so the
+// paginated Page shape needs no mock mirror.
+const sdk = vi.hoisted(() => ({ speech: vi.fn(), list: vi.fn(), get: vi.fn(), stream: vi.fn() }));
 vi.mock("@speechify/api", () => ({
   SpeechifyClient: class {
-    audio = { speech: sdk.speech };
+    audio = { speech: sdk.speech, stream: sdk.stream };
     voices = { list: sdk.list, get: sdk.get };
   },
   SpeechifyError: class SpeechifyError extends Error {},
@@ -49,17 +49,36 @@ async function connect(): Promise<Client> {
   return client;
 }
 
+/** Answer client.audio.stream() with a body carrying `text`. */
+function streamReturns(text: string, headers: Record<string, string> = {}): void {
+  sdk.stream.mockReturnValue({
+    withRawResponse: async () => ({
+      data: {
+        stream: () =>
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(text));
+              controller.close();
+            },
+          }),
+      },
+      rawResponse: { headers: new Headers(headers) },
+    }),
+  });
+}
+
 beforeEach(() => {
   sdk.speech.mockReset();
   sdk.list.mockReset();
   sdk.get.mockReset();
+  sdk.stream.mockReset();
 });
 
 describe("buildServer tool registration", () => {
   it("always registers every tool, regardless of auth state", async () => {
     const client = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(["get_voice", "list_voices", "search_docs", "text_to_speech"]);
+    expect(names).toEqual(["get_voice", "list_voices", "search_docs", "stream_text_to_speech", "text_to_speech"]);
     await client.close();
   });
 
@@ -182,6 +201,48 @@ describe("text_to_speech tool", () => {
     );
     expect(audio?.mimeType).toBe("audio/mpeg");
     expect(audio?.data).toBe(Buffer.from("XYZ").toString("base64"));
+    await client.close();
+  });
+});
+
+describe("stream_text_to_speech tool", () => {
+  const outPath = path.join(os.tmpdir(), `speechify-stream-${process.pid}-${Date.now()}.mp3`);
+  afterEach(() => rm(outPath, { force: true }));
+
+  it("writes the audio to the caller's path and returns the path, never the bytes", async () => {
+    streamReturns("STREAMEDAUDIO", { "content-type": "audio/mpeg" });
+    const client = await connect();
+
+    const res = await client.callTool({
+      name: "stream_text_to_speech",
+      arguments: { input: "a long article", outputPath: outPath },
+    });
+
+    expect(await readFile(outPath, "utf8")).toBe("STREAMEDAUDIO");
+    expect(firstText(res)).toContain(outPath);
+    expect(firstText(res)).toContain("13 bytes");
+    // The point of this tool: the model pays for a path, not a megabyte of base64.
+    expect((res.content as Array<{ type: string }>).every((block) => block.type === "text")).toBe(true);
+    await client.close();
+  });
+
+  it("requires an output path, so it can never dump audio into the conversation", async () => {
+    const client = await connect();
+    const res = await client.callTool({ name: "stream_text_to_speech", arguments: { input: "hello" } });
+    expect(res.isError).toBe(true);
+    await client.close();
+  });
+
+  it("sends the container as the Accept header", async () => {
+    streamReturns("OGGBYTES", { "content-type": "audio/ogg" });
+    const client = await connect();
+
+    await client.callTool({
+      name: "stream_text_to_speech",
+      arguments: { input: "hello", outputPath: outPath, audioFormat: "ogg", voiceId: "henry" },
+    });
+
+    expect(sdk.stream).toHaveBeenCalledWith(expect.objectContaining({ Accept: "audio/ogg", voice_id: "henry" }));
     await client.close();
   });
 });
