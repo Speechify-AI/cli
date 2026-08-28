@@ -1,6 +1,6 @@
 {
   "name": "@speechify/cli",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "SpeechifyAI command-line companion to the developer console — synthesize speech and manage voices from your terminal.",
   "type": "module",
   "bin": {

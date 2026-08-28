@@ -15,7 +15,11 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
   `say`, `voices list`, `keys` (API-key management), `usage` (request log +
   analytics), `api` (gh-style raw passthrough), `mcp` (MCP server).
 - **Alpha:** `mcp` — the tool implementations are expected to move to a hosted
-  server, with `speechify mcp` becoming a relay to it. Treat it as unstable.
+  server, with `speechify mcp` becoming a relay to it. Treat it as unstable. Both
+  `mcp` and `mcp install` are gated behind an explicit `--accept-alpha` flag and
+  refuse to run without it (`assertAlphaOptIn` in `commands/mcp.ts`); `mcp install`
+  bakes the flag into the client config it writes (`cliInvocation`) so installed
+  servers still start.
 - **Blocked (backend gap):** a complete browser `login` needs console-side
   `/cli/login` (page) + `/cli/token` (exchange) endpoints — **they don't exist
   yet**. The CLI side is built + tested as a PKCE auth-code flow (RFC 8252/7636):

@@ -167,9 +167,11 @@ full `https://…` endpoint is used as-is.
 
 ## MCP server
 
-> **Alpha — expect changes.** The tool implementations behind this command are
-> expected to move to a hosted server, with `speechify mcp` becoming a relay
-> to it. Don't build on the MCP surface in its current form.
+> **Alpha — expect changes.** The mcp surface is alpha, so `speechify mcp` and
+> `speechify mcp install` require an explicit `--accept-alpha` opt-in and refuse
+> to run without it. The tool implementations behind this command are expected to
+> move to a hosted server, with `speechify mcp` becoming a relay to it. Don't
+> build on the MCP surface in its current form.
 
 `speechify mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
@@ -181,8 +183,8 @@ directly. Tools:
   *(requires a session or API key)*
 
 ```bash
-speechify mcp                      # serve over stdio (the usual MCP transport)
-speechify mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
+speechify mcp --accept-alpha                    # serve over stdio (the usual MCP transport)
+speechify mcp --accept-alpha --http --port 3000 # serve streamable HTTP at POST /mcp instead
 ```
 
 All three tools are always registered, so they stay discoverable to agents
@@ -197,10 +199,10 @@ restart. Calling an authenticated tool without a session returns a clear
 `speechify mcp install` writes the server into a client's MCP config for you:
 
 ```bash
-speechify mcp install --all                       # every detected client
-speechify mcp install --client claude-code cursor # specific clients
-speechify mcp install --print                     # print the config block, write nothing
-speechify mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechify mcp install --accept-alpha --all                       # every detected client
+speechify mcp install --accept-alpha --client claude-code cursor # specific clients
+speechify mcp install --accept-alpha --print                     # print the config block, write nothing
+speechify mcp install --accept-alpha --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
 ```
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
@@ -214,13 +216,13 @@ on your `PATH`):
 ```json
 {
   "mcpServers": {
-    "speechify": { "command": "speechify", "args": ["mcp"] }
+    "speechify": { "command": "speechify", "args": ["mcp", "--accept-alpha"] }
   }
 }
 ```
 
-Run `speechify mcp install --print` to see the exact command for your setup — until
-the CLI is published, it spawns the running binary by absolute path.
+Run `speechify mcp install --accept-alpha --print` to see the exact command for your
+setup — until the CLI is published, it spawns the running binary by absolute path.
 
 ## Development
 

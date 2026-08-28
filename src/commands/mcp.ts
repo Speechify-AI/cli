@@ -1,7 +1,12 @@
 // `speechify mcp` — run the SpeechifyAI MCP server (stdio by default, or --http) so
 // AI agents can search docs, list voices, and synthesize speech.
 // `speechify mcp install` writes the server into local AI clients' configs.
+//
+// The mcp surface is ALPHA: both `mcp` and `mcp install` refuse to run without an
+// explicit `--accept-alpha` opt-in, and `mcp install` bakes that flag into the
+// spawned-server config it writes (see cliInvocation in mcp-install.ts).
 import { type Command, Option } from "commander";
+import { CliError, ExitCode } from "../core/errors.js";
 import { runMcp } from "../mcp/run.js";
 import { type GlobalOptions, intArg } from "../options.js";
 import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install.js";
@@ -9,13 +14,27 @@ import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install
 interface McpCommandOptions extends GlobalOptions {
   http?: boolean;
   port: number;
+  acceptAlpha?: boolean;
+}
+
+const ACCEPT_ALPHA_FLAG = "--accept-alpha";
+const ACCEPT_ALPHA_DESC = "acknowledge the mcp command is alpha and may change or break without notice";
+
+/** Gate the alpha mcp surface: refuse to run unless the caller opted in. */
+function assertAlphaOptIn(accepted: boolean | undefined): void {
+  if (accepted) return;
+  throw new CliError(
+    "`speechify mcp` is alpha and may change or break without notice. Re-run with --accept-alpha to opt in.",
+    { exitCode: ExitCode.CONFIG, code: "alpha_opt_in_required" },
+  );
 }
 
 export function registerMcpCommand(program: Command): void {
   const mcp = program
     .command("mcp")
-    .description("(alpha) Run the MCP server over stdio (or --http) for AI agents.")
+    .description("(alpha) Run the MCP server over stdio (or --http) for AI agents. Requires --accept-alpha.")
     .option("--http", "serve over streamable HTTP instead of stdio")
+    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
     .addOption(
       new Option("--port <n>", "HTTP port (with --http)")
         .default(3000)
@@ -23,6 +42,7 @@ export function registerMcpCommand(program: Command): void {
     )
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as McpCommandOptions;
+      assertAlphaOptIn(opts.acceptAlpha);
       await runMcp({
         http: opts.http,
         port: opts.port,
@@ -37,13 +57,17 @@ export function registerMcpCommand(program: Command): void {
 
   mcp
     .command("install")
-    .description("(alpha) Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …).")
+    .description(
+      "(alpha) Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …). Requires --accept-alpha.",
+    )
     .option("--client <ids...>", `client id(s): ${CLIENT_IDS.join(", ")}`)
     .option("--all", "install into every detected client")
     .option("--print", "print the config block instead of writing it")
     .option("--embed-key", "embed $SPEECHIFY_API_KEY in the client env (default: rely on the stored session)")
+    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
     .action(async (_options: unknown, command: Command) => {
-      const opts = command.optsWithGlobals() as GlobalOptions & McpInstallOptions;
+      const opts = command.optsWithGlobals() as GlobalOptions & McpInstallOptions & { acceptAlpha?: boolean };
+      assertAlphaOptIn(opts.acceptAlpha);
       await runMcpInstall({
         client: opts.client,
         all: opts.all,
