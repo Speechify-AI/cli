@@ -50,7 +50,6 @@ export function registerMcpCommand(program: Command): void {
           apiKey: opts.apiKey,
           apiVersion: opts.apiVersion,
           baseUrl: opts.baseUrl,
-          workspaceId: opts.workspace,
         },
       });
     });

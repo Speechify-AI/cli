@@ -3,12 +3,9 @@
 import { Command } from "commander";
 import { registerApiCommand } from "./commands/api.js";
 import { registerAuthCommands } from "./commands/auth.js";
-import { registerKeysCommand } from "./commands/keys.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSayCommand } from "./commands/say.js";
-import { registerUsageCommand } from "./commands/usage.js";
 import { registerVoicesCommand } from "./commands/voices.js";
-import { registerWorkspaceCommand } from "./commands/workspace.js";
 import { NeedsInputError, normalizeError } from "./core/errors.js";
 import { emitNeedsInput } from "./output.js";
 import { type OutputMode, outputMode } from "./runtime.js";
@@ -19,7 +16,6 @@ import { type OutputMode, outputMode } from "./runtime.js";
 // long-flag lookup key (the substring before the first space).
 const GLOBAL_OPTIONS: ReadonlyArray<readonly [flags: string, description: string]> = [
   ["--api-key <key>", "Speechify API key (overrides login / $SPEECHIFY_API_KEY)"],
-  ["--workspace <id>", "act in this workspace for one command (overrides the selected one)"],
   ["--api-version <date>", "pin the Speechify-Version header (ISO date, e.g. 2026-06-27)"],
   ["--base-url <url>", "override the API origin (defaults to $SPEECHIFY_BASE_URL or production)"],
   ["--json", "emit machine-readable JSON on stdout"],
@@ -40,15 +36,12 @@ function buildProgram(): Command {
   const program = new Command();
   program
     .name("speechify")
-    .description("SpeechifyAI command-line companion to the developer console.")
+    .description("SpeechifyAI command-line companion for the Speechify API.")
     .version(__CLI_VERSION__, "-V, --version", "print the CLI version");
 
   registerAuthCommands(program);
-  registerWorkspaceCommand(program);
   registerSayCommand(program);
   registerVoicesCommand(program);
-  registerKeysCommand(program);
-  registerUsageCommand(program);
   registerApiCommand(program);
   registerMcpCommand(program);
 

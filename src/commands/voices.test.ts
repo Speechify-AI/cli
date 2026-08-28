@@ -7,9 +7,7 @@ vi.mock("@vercel/detect-agent", () => ({
 }));
 vi.mock("../auth/session.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../auth/session.js")>()),
-  resolveAuth: vi
-    .fn()
-    .mockResolvedValue({ bearer: "tok", tenantId: "ws_1", baseUrl: "https://api.example", mode: "console" }),
+  resolveAuth: vi.fn().mockResolvedValue({ bearer: "sk_test", baseUrl: "https://api.example", keySource: "flag" }),
 }));
 
 // Fake the transport boundary only: createClient normally builds the real SDK

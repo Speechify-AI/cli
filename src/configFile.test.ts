@@ -57,14 +57,14 @@ afterEach(async () => {
 
 describe("encrypted-file fallback (no keychain backend)", () => {
   it("round-trips the whole config and writes an opaque 0600 file", async () => {
-    const cfg = { refresh_token: "rt_secret", firebase_api_key: "fk", workspace_id: "ws_1" };
+    const cfg = { api_key: "sk_secret", base_url: "https://api.example", api_version: "2026-01-01" };
     expect(await writeConfigFile(cfg)).toBe("file");
     expect(await readConfigFile()).toEqual(cfg);
 
     // Ciphertext, not plaintext: the secret and field names aren't grep-able.
     const raw = await readFile(credentialsFilePath(), "utf8");
-    expect(raw).not.toContain("rt_secret");
-    expect(raw).not.toContain("refresh_token");
+    expect(raw).not.toContain("sk_secret");
+    expect(raw).not.toContain("api_key");
 
     const mode = (await stat(credentialsFilePath())).mode & 0o777;
     expect(mode).toBe(0o600);
@@ -84,7 +84,7 @@ describe("encrypted-file fallback (no keychain backend)", () => {
 
 describe("legacy plaintext migration", () => {
   it("migrates config.json into the fallback and deletes the plaintext", async () => {
-    const legacy = { refresh_token: "old_rt", firebase_api_key: "fk", workspace_id: "ws_old" };
+    const legacy = { api_key: "sk_old", base_url: "https://api.example" };
     await mkdir(configDir(), { recursive: true });
     await writeFile(configFilePath(), JSON.stringify(legacy));
 
@@ -102,7 +102,7 @@ describe("legacy plaintext migration", () => {
 describe("keychain backend (when available)", () => {
   it("prefers the keychain and writes no plaintext/enc file", async () => {
     keychain.available = true;
-    const cfg = { refresh_token: "rt", workspace_id: "ws_k" };
+    const cfg = { api_key: "sk_k" };
 
     expect(await writeConfigFile(cfg)).toBe("keychain");
     expect(await readConfigFile()).toEqual(cfg);

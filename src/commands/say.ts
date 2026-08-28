@@ -9,7 +9,7 @@ import { writeFile } from "node:fs/promises";
 import { type Command, Option } from "commander";
 import { PlaybackUnavailableError, playAudio } from "../audio/play.js";
 import { assertBinaryStdout, assertPathAvailable, writeStreamToFile, writeStreamToStdout } from "../audio/sink.js";
-import { requireWorkspace, resolveAuth } from "../auth/session.js";
+import { resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
 import { CliError, ExitCode, type InputField, NeedsInputError } from "../core/errors.js";
 import { resolveTimeoutMs } from "../core/fetchWithTimeout.js";
@@ -186,12 +186,9 @@ export function registerSayCommand(program: Command): void {
         apiKey: opts.apiKey,
         apiVersion: opts.apiVersion,
         baseUrl: opts.baseUrl,
-        workspaceId: opts.workspace,
       });
-      requireWorkspace(auth);
       const client = createClient({
         bearer: auth.bearer,
-        tenantId: auth.tenantId,
         apiVersion: auth.apiVersion,
         baseUrl: auth.baseUrl,
       });

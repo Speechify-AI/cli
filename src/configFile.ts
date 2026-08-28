@@ -12,18 +12,7 @@ import { homedir, hostname, userInfo } from "node:os";
 import { join } from "node:path";
 
 export interface StoredConfig {
-  // Console session (primary auth): a long-lived Firebase refresh token, plus the
-  // public Firebase web API key used to exchange it for short-lived ID tokens.
-  refresh_token?: string;
-  firebase_api_key?: string;
-  // Cached short-lived ID token (the Bearer) + its absolute expiry (epoch ms).
-  // Reused across invocations so we don't re-exchange — and, under Firebase
-  // refresh-token rotation, re-rotate — the refresh token on every command.
-  id_token?: string;
-  id_token_expires_at?: number;
-  /** Selected workspace, sent as the X-Tenant-ID header (ws_… form). */
-  workspace_id?: string;
-  // Power-user / legacy path: a raw API key (sk_…) for the public TTS surface.
+  // The credential: a raw Speechify API key (sk_…), sent as `Authorization: Bearer`.
   api_key?: string;
   api_version?: string;
   base_url?: string;

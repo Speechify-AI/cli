@@ -1,7 +1,7 @@
 // `speechify voices list` / `voices get` — the voice catalog (built-in + cloned).
 import type { SpeechifyClient } from "@speechify/api";
 import { type Command, Option } from "commander";
-import { requireWorkspace, resolveAuth } from "../auth/session.js";
+import { resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
 import { CliError, ExitCode, type InputField, NeedsInputError } from "../core/errors.js";
 import { filterVoices, getVoice, listVoices, type VoiceDetail, type VoiceFilters } from "../core/voices.js";
@@ -21,18 +21,15 @@ const GET_INPUTS: InputField[] = [
   },
 ];
 
-/** The resolve-guard-build preamble both voice subcommands share. */
+/** The resolve-then-build preamble both voice subcommands share. */
 async function voicesClient(opts: GlobalOptions): Promise<SpeechifyClient> {
   const auth = await resolveAuth({
     apiKey: opts.apiKey,
     apiVersion: opts.apiVersion,
     baseUrl: opts.baseUrl,
-    workspaceId: opts.workspace,
   });
-  requireWorkspace(auth);
   return createClient({
     bearer: auth.bearer,
-    tenantId: auth.tenantId,
     apiVersion: auth.apiVersion,
     baseUrl: auth.baseUrl,
   });
@@ -97,7 +94,7 @@ export function registerVoicesCommand(program: Command): void {
           // Count to stderr so stdout stays a clean, greppable table.
           logInfo(`\n${summary}.`);
         },
-        context: `Listed ${summary} available to this workspace${isFiltered ? " (after --locale/--gender/--search filtering)" : ""}. Use a voice's \`id\` as --voice for \`speechify say\`.`,
+        context: `Listed ${summary} available to this account${isFiltered ? " (after --locale/--gender/--search filtering)" : ""}. Use a voice's \`id\` as --voice for \`speechify say\`.`,
         hints: [
           'Synthesize with `speechify say "text" --voice <id>`.',
           ...(isFiltered ? [] : ["Narrow with --locale <prefix>, --gender <g>, or --search <text>."]),

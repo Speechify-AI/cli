@@ -1,7 +1,7 @@
 // `speechify api <endpoint>` — authenticated raw passthrough to the Speechify API
 // (gh-api style), for endpoints the typed commands don't cover yet. Auth flows
-// through resolveAuth(), so it carries the console Bearer + X-Tenant-ID (or an API
-// key) exactly like every other command. Prints the response body to stdout.
+// through resolveAuth(), so it carries the API-key Bearer exactly like every other
+// command. Prints the response body to stdout.
 import { readFile } from "node:fs/promises";
 import type { Command } from "commander";
 import type { AuthContext } from "../auth/session.js";
@@ -71,7 +71,6 @@ export async function buildApiRequest(auth: AuthContext, endpoint: string, opts:
     authorization: `Bearer ${auth.bearer}`,
     accept: "application/json",
   };
-  if (auth.tenantId) headers["x-tenant-id"] = auth.tenantId;
   if (auth.apiVersion) headers["speechify-version"] = auth.apiVersion;
   if (contentType) headers["content-type"] = contentType;
   for (const h of opts.header ?? []) {
@@ -100,7 +99,6 @@ export function registerApiCommand(program: Command): void {
         apiKey: opts.apiKey,
         apiVersion: opts.apiVersion,
         baseUrl: opts.baseUrl,
-        workspaceId: opts.workspace,
       });
       const req = await buildApiRequest(auth, endpoint, opts);
       const res = await fetchWithTimeout(req.url, { method: req.method, headers: req.headers, body: req.body });

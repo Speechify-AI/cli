@@ -19,24 +19,9 @@ vi.mock("@napi-rs/keyring", () => ({
   },
 }));
 
-import { readConfigFile, writeConfigFile } from "../configFile.js";
+import { writeConfigFile } from "../configFile.js";
 import { CliError } from "../core/errors.js";
-import { DEFAULT_BASE_URL, requireConsole, requireWorkspace, resetIdTokenCache, resolveAuth } from "./session.js";
-
-/** Stub the Firebase token exchange so a stored console session resolves offline. */
-function stubTokenExchange(): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async () =>
-        ({
-          ok: true,
-          status: 200,
-          json: async () => ({ id_token: "idtok", refresh_token: "rt", expires_in: "3600" }),
-        }) as unknown as Response,
-    ),
-  );
-}
+import { DEFAULT_BASE_URL, resolveAuth } from "./session.js";
 
 let dir: string;
 
@@ -45,9 +30,8 @@ beforeEach(async () => {
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   vi.stubEnv("SPEECHIFY_API_KEY", "");
-  vi.stubEnv("SPEECHIFY_FB_API_KEY", "");
   vi.stubEnv("SPEECHIFY_BASE_URL", "");
-  resetIdTokenCache();
+  vi.stubEnv("SPEECHIFY_API_VERSION", "");
 });
 
 afterEach(async () => {
@@ -57,151 +41,43 @@ afterEach(async () => {
 });
 
 describe("resolveAuth", () => {
-  it("uses an explicit API key (api-key mode) and records the flag source", async () => {
+  it("uses an explicit API key and records the flag source", async () => {
     const auth = await resolveAuth({ apiKey: "sk_flag" });
-    expect(auth).toMatchObject({ bearer: "sk_flag", mode: "api-key", baseUrl: DEFAULT_BASE_URL, keySource: "flag" });
-    expect(auth.tenantId).toBeUndefined();
+    expect(auth).toMatchObject({ bearer: "sk_flag", baseUrl: DEFAULT_BASE_URL, keySource: "flag" });
   });
 
-  it("records the stored source for a keychain API key", async () => {
+  it("records the env source for $SPEECHIFY_API_KEY", async () => {
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
+    const auth = await resolveAuth();
+    expect(auth).toMatchObject({ bearer: "sk_env", keySource: "env" });
+  });
+
+  it("lets a flag key outrank the env key", async () => {
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
+    const auth = await resolveAuth({ apiKey: "sk_flag" });
+    expect(auth).toMatchObject({ bearer: "sk_flag", keySource: "flag" });
+  });
+
+  it("records the stored source for a persisted API key", async () => {
     await writeConfigFile({ api_key: "sk_stored" });
     const auth = await resolveAuth();
-    expect(auth).toMatchObject({ bearer: "sk_stored", mode: "api-key", keySource: "stored" });
+    expect(auth).toMatchObject({ bearer: "sk_stored", keySource: "stored" });
   });
 
-  it("mints an ID token from a stored console session and carries the workspace", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
-    const fetchMock = vi.fn(
-      async () =>
-        ({
-          ok: true,
-          status: 200,
-          json: async () => ({ id_token: "idtok", refresh_token: "rt", expires_in: "3600" }),
-        }) as unknown as Response,
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("lets an env API key outrank a stored key", async () => {
+    await writeConfigFile({ api_key: "sk_stored" });
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
     const auth = await resolveAuth();
-    expect(auth).toMatchObject({ bearer: "idtok", tenantId: "ws_1", mode: "console" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(auth).toMatchObject({ bearer: "sk_env", keySource: "env" });
   });
 
-  it("persists the minted ID token (+expiry) and rotated refresh token after an exchange", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          ({
-            ok: true,
-            status: 200,
-            json: async () => ({ id_token: "idtok", refresh_token: "rt_rotated", expires_in: "3600" }),
-          }) as unknown as Response,
-      ),
-    );
-
-    await resolveAuth();
-
-    const cfg = await readConfigFile();
-    expect(cfg).toMatchObject({ id_token: "idtok", refresh_token: "rt_rotated" });
-    expect(cfg?.id_token_expires_at).toBeGreaterThan(Date.now());
-  });
-
-  it("reuses a persisted, unexpired ID token without exchanging", async () => {
-    await writeConfigFile({
-      refresh_token: "rt",
-      firebase_api_key: "fbkey",
-      workspace_id: "ws_1",
-      id_token: "cached_idtok",
-      id_token_expires_at: Date.now() + 30 * 60_000,
-    });
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
+  it("resolves the base URL and version from the stored config", async () => {
+    await writeConfigFile({ api_key: "sk_stored", base_url: "https://example.test", api_version: "2026-01-01" });
     const auth = await resolveAuth();
-    expect(auth).toMatchObject({ bearer: "cached_idtok", tenantId: "ws_1", mode: "console" });
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("re-exchanges when the persisted ID token has expired", async () => {
-    await writeConfigFile({
-      refresh_token: "rt",
-      firebase_api_key: "fbkey",
-      workspace_id: "ws_1",
-      id_token: "stale_idtok",
-      id_token_expires_at: Date.now() - 1,
-    });
-    const fetchMock = vi.fn(
-      async () =>
-        ({
-          ok: true,
-          status: 200,
-          json: async () => ({ id_token: "fresh_idtok", refresh_token: "rt", expires_in: "3600" }),
-        }) as unknown as Response,
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const auth = await resolveAuth();
-    expect(auth.bearer).toBe("fresh_idtok");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(auth).toMatchObject({ baseUrl: "https://example.test", apiVersion: "2026-01-01" });
   });
 
   it("throws a CliError when nothing is configured", async () => {
     await expect(resolveAuth()).rejects.toBeInstanceOf(CliError);
-  });
-
-  it("lets an env API key outrank a stored console session by default", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
-    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
-
-    const auth = await resolveAuth();
-    expect(auth).toMatchObject({ bearer: "sk_env", mode: "api-key", keySource: "env" });
-  });
-
-  it("preferConsole ignores a flag/env API key and resolves the stored console session", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fbkey", workspace_id: "ws_1" });
-    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
-    stubTokenExchange();
-
-    const auth = await resolveAuth({ apiKey: "sk_flag", preferConsole: true });
-    expect(auth).toMatchObject({ bearer: "idtok", tenantId: "ws_1", mode: "console" });
-  });
-});
-
-describe("requireConsole", () => {
-  it("throws in api-key mode", () => {
-    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key" })).toThrow(CliError);
-  });
-
-  it("names $SPEECHIFY_API_KEY when the shadowing key came from the env", () => {
-    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "env" })).toThrow(
-      /\$SPEECHIFY_API_KEY — unset it/,
-    );
-  });
-
-  it("names --api-key when the shadowing key came from the flag", () => {
-    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "flag" })).toThrow(
-      /--api-key — drop the flag/,
-    );
-  });
-
-  it("suggests plain login for a stored key", () => {
-    expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "stored" })).toThrow(
-      /Run `speechify login` to sign in/,
-    );
-  });
-
-  it("is a no-op in console mode", () => {
-    expect(requireConsole({ bearer: "idtok", baseUrl: "y", tenantId: "ws_1", mode: "console" })).toBeUndefined();
-  });
-});
-
-describe("requireWorkspace", () => {
-  it("throws in console mode without a selected workspace", () => {
-    expect(() => requireWorkspace({ bearer: "x", baseUrl: "y", mode: "console" })).toThrow(CliError);
-  });
-
-  it("is a no-op for api-key mode", () => {
-    expect(requireWorkspace({ bearer: "x", baseUrl: "y", mode: "api-key" })).toBe("");
   });
 });

@@ -19,12 +19,12 @@ vi.mock("@speechify/api", () => ({
   SpeechifyError: class SpeechifyError extends Error {},
 }));
 
-// Keep requireWorkspace real; stub resolveAuth to an api-key context (no workspace).
+// Stub resolveAuth to an api-key context.
 vi.mock("../auth/session.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../auth/session.js")>();
   return {
     ...actual,
-    resolveAuth: vi.fn(async () => ({ bearer: "tok", baseUrl: "https://api.example", mode: "api-key" })),
+    resolveAuth: vi.fn(async () => ({ bearer: "sk_test", baseUrl: "https://api.example", keySource: "flag" })),
   };
 });
 
