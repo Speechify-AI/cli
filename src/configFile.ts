@@ -32,11 +32,11 @@ export interface StoredConfig {
 /** Where the credentials ended up — useful to surface after `login`. */
 export type CredentialSource = "keychain" | "file";
 
-const KEYCHAIN_SERVICE = "speechifyai-cli";
+const KEYCHAIN_SERVICE = "speechify-cli";
 const KEYCHAIN_ACCOUNT = "default";
 // Salt for the file-fallback key derivation (see fileKey). The `.v1` lets us
 // rotate the scheme later without colliding with old blobs.
-const FILE_SALT = "speechifyai-cli.v1";
+const FILE_SALT = "speechify-cli.v1";
 
 export function configDir(): string {
   if (process.platform === "win32") {

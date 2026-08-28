@@ -1,8 +1,8 @@
-// `speechifyai login | logout | whoami` — console-user authentication.
+// `speechify login | logout | whoami` — console-user authentication.
 //
 // Default login is a browser flow (opens the console, captures a Firebase refresh
 // token via a localhost callback). Until the console `/cli/login` page ships, the
-// working path is `speechifyai login --refresh-token <token>` (with the Firebase web
+// working path is `speechify login --refresh-token <token>` (with the Firebase web
 // API key via --firebase-api-key or $SPEECHIFY_FB_API_KEY).
 import type { Command } from "commander";
 import { openBrowser } from "../auth/browser.js";
@@ -80,7 +80,7 @@ async function browserLogin(): Promise<Session> {
     } catch (err) {
       const reason = err instanceof Error ? err.message : "unknown error";
       throw new CliError(
-        `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechifyai login --refresh-token <token>\` for now.`,
+        `Browser login didn't complete (${reason}). The console CLI-login page may not be available yet — use \`speechify login --refresh-token <token>\` for now.`,
         { exitCode: ExitCode.UNAVAILABLE, code: "browser_login_failed", cause: err },
       );
     }
@@ -139,7 +139,7 @@ export function registerAuthCommands(program: Command): void {
           human: () => logInfo(`Logged in with an API key: ${masked}`),
           context:
             "Stored an API key (replacing any previous console session). API keys reach the public TTS + scoped agent surface only — not workspace-scoped console endpoints.",
-          hints: ['Synthesize with `speechifyai say "text"`, or list voices with `speechifyai voices list`.'],
+          hints: ['Synthesize with `speechify say "text"`, or list voices with `speechify voices list`.'],
         });
         return;
       }
@@ -183,7 +183,7 @@ export function registerAuthCommands(program: Command): void {
           logInfo("Logged in.");
           if (selected) logInfo(`Workspace: ${selected.name} (${selected.id}).`);
           else if (workspaces.length === 0) logWarning("You don't belong to any workspaces yet.");
-          else logInfo("Select a workspace: `speechifyai workspace use <id>` (list: `speechifyai workspace list`).");
+          else logInfo("Select a workspace: `speechify workspace use <id>` (list: `speechify workspace list`).");
         },
         context: selected
           ? `Logged in as a console user, acting in workspace ${selected.name} (${selected.id}).`
@@ -193,7 +193,7 @@ export function registerAuthCommands(program: Command): void {
         hints:
           selected || workspaces.length === 0
             ? undefined
-            : ["Select a workspace with `speechifyai workspace use <id>`."],
+            : ["Select a workspace with `speechify workspace use <id>`."],
       });
     });
 
@@ -269,7 +269,7 @@ export function registerAuthCommands(program: Command): void {
           context: `Logged in as ${who}${opts.check ? "; the session was verified against the API" : ""}. ${
             stored.workspace_id ? `Acting in workspace ${stored.workspace_id}.` : "No workspace is selected yet."
           }`,
-          hints: stored.workspace_id ? undefined : ["Select a workspace with `speechifyai workspace use <id>`."],
+          hints: stored.workspace_id ? undefined : ["Select a workspace with `speechify workspace use <id>`."],
         });
         return;
       }
@@ -288,16 +288,16 @@ export function registerAuthCommands(program: Command): void {
       // Not authenticated: --check is a liveness contract, so fail loudly (78);
       // without it, report the state as data and exit 0.
       if (opts.check) {
-        throw new CliError("Not authenticated. Run `speechifyai login`.", {
+        throw new CliError("Not authenticated. Run `speechify login`.", {
           exitCode: ExitCode.CONFIG,
           code: "not_authenticated",
         });
       }
       emit(mode, {
         data: { mode: null },
-        human: () => logInfo("Not logged in. Run `speechifyai login`."),
+        human: () => logInfo("Not logged in. Run `speechify login`."),
         context: "Not authenticated. No API key (flag/env/stored) and no console session were found.",
-        hints: ["Run `speechifyai login` (console user), or pass --api-key / set $SPEECHIFY_API_KEY."],
+        hints: ["Run `speechify login` (console user), or pass --api-key / set $SPEECHIFY_API_KEY."],
       });
     });
 }

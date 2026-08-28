@@ -15,7 +15,7 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
   `say`, `voices list`, `keys` (API-key management), `usage` (request log +
   analytics), `api` (gh-style raw passthrough), `mcp` (MCP server).
 - **Alpha:** `mcp` — the tool implementations are expected to move to a hosted
-  server, with `speechifyai mcp` becoming a relay to it. Treat it as unstable.
+  server, with `speechify mcp` becoming a relay to it. Treat it as unstable.
 - **Blocked (backend gap):** a complete browser `login` needs console-side
   `/cli/login` (page) + `/cli/token` (exchange) endpoints — **they don't exist
   yet**. The CLI side is built + tested as a PKCE auth-code flow (RFC 8252/7636):
@@ -23,7 +23,7 @@ monorepo is checked out locally it's the source of truth for endpoint shapes.
   the credential — the durable token never rides in a URL. Contract lives in
   `auth/callbackServer.ts`; pieces are `auth/pkce.ts` + `auth/cliAuth.ts`. Until
   the endpoints ship, the working path is
-  `speechifyai login --refresh-token <token> --firebase-api-key <key>`.
+  `speechify login --refresh-token <token> --firebase-api-key <key>`.
 - **Next (chosen):** knowledge-base sync, conversations + analytics — all hit
   console (internal-audience) endpoints via `core/http.ts` (as `keys`/`usage` do).
 
@@ -34,7 +34,7 @@ workspace** — this is what unlocks the full console surface (vs an API key, wh
 only reaches public TTS + scoped agent endpoints, never api-keys/usage/members).
 
 - Durable credential = **Firebase refresh token**, stored in the **OS keychain**
-  (service `speechifyai-cli`; macOS Keychain / Windows Credential Manager / Linux
+  (service `speechify-cli`; macOS Keychain / Windows Credential Manager / Linux
   Secret Service via `@napi-rs/keyring`), with an **AES-256-GCM encrypted-file**
   fallback at `~/.config/speechify/credentials.enc` (`0600`) on keychain-less
   hosts. Legacy plaintext `config.json` is migrated into the keychain on first
@@ -67,7 +67,7 @@ src/
     server.ts       buildServer() → MCP tools (search_docs + authed list_voices/text_to_speech)
     run.ts          stdio / streamable-HTTP transport wiring
   commands/         thin adapters over core/ (auth, workspace, say, voices, api, mcp)
-  configFile.ts     OS keychain (service speechifyai-cli) + AES-256-GCM credentials.enc fallback; same StoredConfig API
+  configFile.ts     OS keychain (service speechify-cli) + AES-256-GCM credentials.enc fallback; same StoredConfig API
   runtime.ts        detectAgent() + outputMode(opts)/isInteractive(opts) — pure helpers (no global RunContext)
   output.ts io.ts options.ts
 ```

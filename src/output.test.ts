@@ -61,7 +61,7 @@ describe("needsInput", () => {
     const payload = needsInputPayload(err);
     expect(payload).toMatchObject({ ok: false, needsInput: true, command: "say", missing: ["text"] });
     expect(payload.inputs[0]).toMatchObject({ name: "text", required: true });
-    expect(payload.hint).toContain("speechifyai say");
+    expect(payload.hint).toContain("speechify say");
   });
 
   it("json/agent mode writes the structured spec to stdout", () => {

@@ -55,7 +55,7 @@ async function captureStdout(fn: () => Promise<unknown>): Promise<string> {
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "speechifyai-cli-auth-"));
+  dir = await mkdtemp(join(tmpdir(), "speechify-cli-auth-"));
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   vi.stubEnv("SPEECHIFY_API_KEY", "");
@@ -92,7 +92,7 @@ describe("login --api-key", () => {
     await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb", workspace_id: "ws_1" });
     listVoices.mockResolvedValue([]);
 
-    await buildProgram().parseAsync(["node", "speechifyai", "login", "--api-key", "sk_live_123", "--json"]);
+    await buildProgram().parseAsync(["node", "speechify", "login", "--api-key", "sk_live_123", "--json"]);
 
     expect(listVoices).toHaveBeenCalledOnce(); // validated before storing
     const cfg = await readConfigFile();
@@ -108,7 +108,7 @@ describe("login --api-key", () => {
     listVoices.mockRejectedValue(new Error("401 unauthorized"));
 
     await expect(
-      buildProgram().parseAsync(["node", "speechifyai", "login", "--api-key", "sk_bad", "--json"]),
+      buildProgram().parseAsync(["node", "speechify", "login", "--api-key", "sk_bad", "--json"]),
     ).rejects.toThrow();
 
     const cfg = await readConfigFile();
@@ -120,7 +120,7 @@ describe("login --api-key", () => {
 describe("logout", () => {
   it("emits a structured payload to stdout in --json mode (via emit, not a json-only branch)", async () => {
     await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb" });
-    const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechifyai", "logout", "--json"]));
+    const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechify", "logout", "--json"]));
     expect(JSON.parse(out)).toEqual({ status: "logged_out" });
   });
 });
@@ -134,7 +134,7 @@ describe("whoami", () => {
       id_token: fakeIdToken({ email: "shaun@example.com", user_id: "u_1" }),
       id_token_expires_at: Date.now() + 30 * 60_000,
     });
-    const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechifyai", "whoami", "--json"]));
+    const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechify", "whoami", "--json"]));
     expect(JSON.parse(out)).toEqual({
       mode: "console",
       email: "shaun@example.com",
@@ -153,7 +153,7 @@ describe("whoami", () => {
     });
     listWorkspaces.mockResolvedValue([{ id: "ws_1", name: "Main" }]);
     const out = await captureStdout(() =>
-      buildProgram().parseAsync(["node", "speechifyai", "whoami", "--check", "--json"]),
+      buildProgram().parseAsync(["node", "speechify", "whoami", "--check", "--json"]),
     );
     expect(JSON.parse(out)).toMatchObject({ mode: "console", checked: true, workspace_count: 1 });
     expect(listWorkspaces).toHaveBeenCalledOnce();
@@ -163,14 +163,14 @@ describe("whoami", () => {
     vi.stubEnv("SPEECHIFY_API_KEY", "sk_env_key");
     listVoices.mockResolvedValue([]);
     const out = await captureStdout(() =>
-      buildProgram().parseAsync(["node", "speechifyai", "whoami", "--check", "--json"]),
+      buildProgram().parseAsync(["node", "speechify", "whoami", "--check", "--json"]),
     );
     expect(JSON.parse(out)).toMatchObject({ mode: "api-key", source: "env", checked: true });
     expect(listVoices).toHaveBeenCalledOnce();
   });
 
   it("--check fails loudly (not_authenticated) when nothing is configured", async () => {
-    await expect(buildProgram().parseAsync(["node", "speechifyai", "whoami", "--check"])).rejects.toMatchObject({
+    await expect(buildProgram().parseAsync(["node", "speechify", "whoami", "--check"])).rejects.toMatchObject({
       code: "not_authenticated",
       exitCode: 78,
     });

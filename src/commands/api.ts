@@ -1,4 +1,4 @@
-// `speechifyai api <endpoint>` — authenticated raw passthrough to the Speechify API
+// `speechify api <endpoint>` — authenticated raw passthrough to the Speechify API
 // (gh-api style), for endpoints the typed commands don't cover yet. Auth flows
 // through resolveAuth(), so it carries the console Bearer + X-Tenant-ID (or an API
 // key) exactly like every other command. Prints the response body to stdout.

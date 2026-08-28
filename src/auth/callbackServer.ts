@@ -6,7 +6,7 @@
 // CONTRACT with the console `/cli/login` page (to be built in apps/console):
 //   1. CLI opens:
 //        <console>/cli/login
-//          ?client_id=speechifyai-cli
+//          ?client_id=speechify-cli
 //          &redirect_uri=http://127.0.0.1:<port>/callback   (loopback only)
 //          &state=<opaque>                                   (echo back verbatim)
 //          &code_challenge=<base64url(SHA-256(verifier))>
@@ -20,7 +20,7 @@
 //      <console>/cli/token and receives the durable credential in the response.
 //
 // ⚠️ The console `/cli/login` + `/cli/token` endpoints don't exist yet — until
-//    they ship, use `speechifyai login --refresh-token <token>`. This side is done.
+//    they ship, use `speechify login --refresh-token <token>`. This side is done.
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";

@@ -43,7 +43,7 @@ import {
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "speechifyai-cli-cfg-"));
+  dir = await mkdtemp(join(tmpdir(), "speechify-cli-cfg-"));
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   keychain.available = false;

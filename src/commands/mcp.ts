@@ -1,6 +1,6 @@
-// `speechifyai mcp` — run the SpeechifyAI MCP server (stdio by default, or --http) so
+// `speechify mcp` — run the SpeechifyAI MCP server (stdio by default, or --http) so
 // AI agents can search docs, list voices, and synthesize speech.
-// `speechifyai mcp install` writes the server into local AI clients' configs.
+// `speechify mcp install` writes the server into local AI clients' configs.
 import { type Command, Option } from "commander";
 import { runMcp } from "../mcp/run.js";
 import { type GlobalOptions, intArg } from "../options.js";

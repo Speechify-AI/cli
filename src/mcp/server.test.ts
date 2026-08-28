@@ -84,7 +84,7 @@ describe("buildServer tool registration", () => {
 
   it("returns a clean, actionable error when a TTS tool is called unauthenticated", async () => {
     vi.mocked(resolveAuth).mockRejectedValueOnce(
-      new CliError("Not authenticated. Run `speechifyai login`.", {
+      new CliError("Not authenticated. Run `speechify login`.", {
         exitCode: ExitCode.CONFIG,
         code: "not_authenticated",
       }),
@@ -92,7 +92,7 @@ describe("buildServer tool registration", () => {
     const client = await connect();
     const res = await client.callTool({ name: "list_voices", arguments: {} });
     expect(res.isError).toBe(true);
-    expect(firstText(res)).toContain("speechifyai login");
+    expect(firstText(res)).toContain("speechify login");
     await client.close();
   });
 });

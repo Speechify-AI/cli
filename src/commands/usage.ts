@@ -1,4 +1,4 @@
-// `speechifyai usage` — the workspace request log (`usage requests`) and analytics
+// `speechify usage` — the workspace request log (`usage requests`) and analytics
 // rollups (`usage analytics`). Internal-audience, gated on `usage.view` (a 403
 // surfaces as an auth error). The log can be large, so `requests` shows one page
 // and exposes the cursor; `--all` follows it (bounded).
@@ -148,7 +148,7 @@ export function registerUsageCommand(program: Command): void {
           logInfo(`\n${entries.length} request${entries.length === 1 ? "" : "s"}${more}.`);
         },
         context: `Listed ${entries.length} request-log ${entries.length === 1 ? "entry" : "entries"}. ${page.hasMore ? "More pages exist — pass data.nextCursor as --cursor, or use --all." : "This is the full result for the window."}`,
-        hints: ["Aggregate with `speechifyai usage analytics`.", "Filter with --method/--status/--path/--start/--end."],
+        hints: ["Aggregate with `speechify usage analytics`.", "Filter with --method/--status/--path/--start/--end."],
       });
     });
 
@@ -183,7 +183,7 @@ export function registerUsageCommand(program: Command): void {
           }
         },
         context: `Request analytics for ${analytics.start} → ${analytics.end}: ${analytics.totals.requests} requests, ${(analytics.totals.successRate * 100).toFixed(1)}% success. Per-bucket series is in data.series.`,
-        hints: ["Drill into individual requests with `speechifyai usage requests`."],
+        hints: ["Drill into individual requests with `speechify usage requests`."],
       });
     });
 }

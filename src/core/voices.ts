@@ -132,7 +132,7 @@ const VOICE_NOT_FOUND = "voice_not_found";
 function assertVoiceId(voiceId: string): string {
   const trimmed = voiceId.trim();
   if (trimmed.length === 0) {
-    throw new CliError("A voice id is required. List the available ids with `speechifyai voices list`.", {
+    throw new CliError("A voice id is required. List the available ids with `speechify voices list`.", {
       exitCode: ExitCode.DATA_ERR,
       code: "missing_voice_id",
     });
@@ -160,7 +160,7 @@ export async function getVoice(client: SpeechifyClient, voiceId: string): Promis
     // (inventory is deliberately not enumerable across tenants), and the server's
     // own "Voice not found." names neither case nor the fix.
     throw new CliError(
-      `No voice with id "${id}" is visible here. Check the id with \`speechifyai voices list --search <text>\`; a cloned voice is only visible to the workspace that owns it.`,
+      `No voice with id "${id}" is visible here. Check the id with \`speechify voices list --search <text>\`; a cloned voice is only visible to the workspace that owns it.`,
       {
         exitCode: problem.exitCode,
         code: problem.code ?? VOICE_NOT_FOUND,

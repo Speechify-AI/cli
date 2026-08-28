@@ -41,7 +41,7 @@ function stubTokenExchange(): void {
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), "speechifyai-cli-session-"));
+  dir = await mkdtemp(join(tmpdir(), "speechify-cli-session-"));
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   vi.stubEnv("SPEECHIFY_API_KEY", "");
@@ -187,7 +187,7 @@ describe("requireConsole", () => {
 
   it("suggests plain login for a stored key", () => {
     expect(() => requireConsole({ bearer: "sk_x", baseUrl: "y", mode: "api-key", keySource: "stored" })).toThrow(
-      /Run `speechifyai login` to sign in/,
+      /Run `speechify login` to sign in/,
     );
   });
 

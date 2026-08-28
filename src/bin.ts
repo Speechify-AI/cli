@@ -39,7 +39,7 @@ function applyGlobalOptions(cmd: Command): void {
 function buildProgram(): Command {
   const program = new Command();
   program
-    .name("speechifyai")
+    .name("speechify")
     .description("SpeechifyAI command-line companion to the developer console.")
     .version(__CLI_VERSION__, "-V, --version", "print the CLI version");
 

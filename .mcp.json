@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "speechifyai": {
+    "speechify": {
       "command": "node",
       "args": ["dist/bin.js", "mcp"]
     }

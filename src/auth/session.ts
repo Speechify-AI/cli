@@ -91,7 +91,7 @@ async function getValidIdToken(stored: StoredConfig): Promise<string> {
   const apiKey = clean(stored.firebase_api_key) ?? clean(process.env[FB_API_KEY_ENV]);
   const refreshToken = clean(stored.refresh_token);
   if (!apiKey || !refreshToken) {
-    throw new CliError("Console session is incomplete. Run `speechifyai login` again.", {
+    throw new CliError("Console session is incomplete. Run `speechify login` again.", {
       exitCode: ExitCode.CONFIG,
       code: "not_authenticated",
     });
@@ -139,7 +139,7 @@ export async function resolveAuth(input: AuthInput = {}): Promise<AuthContext> {
     return { bearer: storedKey, baseUrl, apiVersion, mode: "api-key", keySource: "stored" };
   }
 
-  throw new CliError("Not authenticated. Run `speechifyai login`.", {
+  throw new CliError("Not authenticated. Run `speechify login`.", {
     exitCode: ExitCode.CONFIG,
     code: "not_authenticated",
   });
@@ -156,10 +156,10 @@ export function requireConsole(auth: AuthContext): void {
   if (auth.mode === "console") return;
   const fix =
     auth.keySource === "env"
-      ? "The key came from $SPEECHIFY_API_KEY — unset it if you're already logged in as a console user, or run `speechifyai login`."
+      ? "The key came from $SPEECHIFY_API_KEY — unset it if you're already logged in as a console user, or run `speechify login`."
       : auth.keySource === "flag"
-        ? "The key came from --api-key — drop the flag if you're already logged in as a console user, or run `speechifyai login`."
-        : "Run `speechifyai login` to sign in as a console user.";
+        ? "The key came from --api-key — drop the flag if you're already logged in as a console user, or run `speechify login`."
+        : "Run `speechify login` to sign in as a console user.";
   throw new CliError(
     `This command needs a console session — an API key can't reach workspace-scoped console endpoints. ${fix}`,
     { exitCode: ExitCode.CONFIG, code: "requires_console" },
@@ -170,7 +170,7 @@ export function requireConsole(auth: AuthContext): void {
 export function requireWorkspace(auth: AuthContext): string {
   if (auth.mode === "console" && !auth.tenantId) {
     throw new CliError(
-      "No workspace selected. Run `speechifyai workspace use <id>` (list them with `speechifyai workspace list`).",
+      "No workspace selected. Run `speechify workspace use <id>` (list them with `speechify workspace list`).",
       { exitCode: ExitCode.CONFIG, code: "no_workspace" },
     );
   }

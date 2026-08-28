@@ -66,7 +66,7 @@ function buildProgram(): Command {
 }
 
 function run(...argv: string[]): Promise<Command> {
-  return buildProgram().parseAsync(["node", "speechifyai", "say", ...argv]);
+  return buildProgram().parseAsync(["node", "speechify", "say", ...argv]);
 }
 
 let directory: string;

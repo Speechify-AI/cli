@@ -16,12 +16,12 @@ as the web console. The durable credential is a Firebase refresh token, exchange
 for short-lived ID tokens automatically.
 
 ```bash
-speechifyai login                 # browser sign-in (see the note below)
-speechifyai workspace list        # workspaces you belong to
-speechifyai workspace use ws_…    # select the active workspace
-speechifyai whoami                # who you are (email), auth mode, active workspace
-speechifyai whoami --check        # also verify the credential live; exits non-zero if invalid
-speechifyai logout
+speechify login                 # browser sign-in (see the note below)
+speechify workspace list        # workspaces you belong to
+speechify workspace use ws_…    # select the active workspace
+speechify whoami                # who you are (email), auth mode, active workspace
+speechify whoami --check        # also verify the credential live; exits non-zero if invalid
+speechify logout
 ```
 
 > ⚠️ **Browser login depends on console-side `/cli/login` + `/cli/token`
@@ -31,7 +31,7 @@ speechifyai logout
 > appears in a URL. Until the console endpoints ship, log in with a Firebase
 > refresh token directly:
 > ```bash
-> speechifyai login --refresh-token <token> --firebase-api-key <fb_web_api_key>
+> speechify login --refresh-token <token> --firebase-api-key <fb_web_api_key>
 > # or: export SPEECHIFY_FB_API_KEY=<fb_web_api_key>
 > ```
 
@@ -40,7 +40,7 @@ console login entirely and use an API key — per-run via `--api-key` /
 `SPEECHIFY_API_KEY`, or persist one to the keychain:
 
 ```bash
-speechifyai login --api-key sk_…   # validates the key, stores it, switches off any console session
+speechify login --api-key sk_…   # validates the key, stores it, switches off any console session
 ```
 
 This path can't reach workspace-scoped features (keys, usage, agents).
@@ -49,25 +49,25 @@ Credential precedence per run: **`--api-key` → console session → stored API 
 
 **Where credentials live.** The session is stored in your **OS keychain**
 (Keychain on macOS, Credential Manager on Windows, Secret Service/libsecret on
-Linux) under the service `speechifyai-cli`. On hosts without a keychain backend
+Linux) under the service `speechify-cli`. On hosts without a keychain backend
 (many headless/CI boxes) it falls back to an **AES-256-GCM encrypted file** at
 `~/.config/speechify/credentials.enc` (`0600`). A pre-existing plaintext
 `config.json` is migrated into the keychain on first use and then removed.
-`speechifyai logout` wipes all of them.
+`speechify logout` wipes all of them.
 
 ## `say`
 
 ```bash
-speechifyai say "Text to speak" \
+speechify say "Text to speak" \
   --voice henry \           # default: george
   --format wav \            # wav | mp3 | ogg | aac | pcm (default mp3)
   --language en-US \
   --out narration.wav \     # default ./speech.<format>; "-" streams to stdout
   --play                    # play after synthesis
 
-echo "from a pipe" | speechifyai say -        # read text from stdin
-speechifyai voices list                       # browse voices
-speechifyai voices list --locale en --gender female --search warm
+echo "from a pipe" | speechify say -        # read text from stdin
+speechify voices list                       # browse voices
+speechify voices list --locale en --gender female --search warm
                                               # filter by locale prefix, gender, free text
 ```
 
@@ -99,7 +99,7 @@ with code **`2`** instead of a generic error — so an agent can read the `input
 list, supply them as flags, and re-invoke:
 
 ```bash
-$ speechifyai say --json < /dev/null
+$ speechify say --json < /dev/null
 { "ok": false, "needsInput": true, "command": "say", "missing": ["text"], "inputs": [ … ] }
 # exit code 2
 ```
@@ -111,15 +111,15 @@ something an API-key-authed tool can't do — so this is one of the clearest rea
 to log in as a console user. Requires a selected workspace.
 
 ```bash
-speechifyai keys list                           # table of keys (secrets masked)
-speechifyai keys create ci --scope audio:all    # create; repeat --scope for more, omit for full access
-speechifyai keys get key_…                       # one key's metadata
-speechifyai keys update key_… --name renamed     # rename, and/or --scope … to replace scopes
-speechifyai keys revoke key_…                    # permanently revoke (aliases: rm, delete)
+speechify keys list                           # table of keys (secrets masked)
+speechify keys create ci --scope audio:all    # create; repeat --scope for more, omit for full access
+speechify keys get key_…                       # one key's metadata
+speechify keys update key_… --name renamed     # rename, and/or --scope … to replace scopes
+speechify keys revoke key_…                    # permanently revoke (aliases: rm, delete)
 ```
 
 `create` prints the plaintext secret **once**, on stdout — pipe it straight out
-(`speechifyai keys create ci --json | jq -r .apiKey`); every later read shows it
+(`speechify keys create ci --json | jq -r .apiKey`); every later read shows it
 masked and it can't be recovered. Scopes are drawn from `audio:all`,
 `voices:{read,write,all}`, `agent:{read,write,all}`, and
 `conversation:{read,write,all}`.
@@ -131,12 +131,12 @@ Requires a selected workspace and the `usage.view` permission (owner, admin, or
 billing admin).
 
 ```bash
-speechifyai usage requests                        # one page of the request log, newest first
-speechifyai usage requests \
+speechify usage requests                        # one page of the request log, newest first
+speechify usage requests \
   --method GET POST --status 200 500 \            # filters: method(s), status(es), route,
   --path /v1/audio --min-latency 100              #   latency, principal, and time window
-speechifyai usage requests --all                  # follow the cursor across all pages (bounded)
-speechifyai usage analytics --granularity 1h      # totals, per-bucket series, and busiest routes
+speechify usage requests --all                  # follow the cursor across all pages (bounded)
+speechify usage analytics --granularity 1h      # totals, per-bucket series, and busiest routes
 ```
 
 The request log defaults to the last 7 days (capped at 30) and returns one
@@ -152,12 +152,12 @@ endpoints the typed commands don't cover yet. It reuses your session, so it send
 the console Bearer **and** `X-Tenant-ID` (or an API key) automatically.
 
 ```bash
-speechifyai api /v1/voices                       # GET, pretty-printed JSON
-speechifyai api /v1/voices -q limit=10 -i        # query params; -i adds status + headers
-speechifyai api /v1/audio/speech \
+speechify api /v1/voices                       # GET, pretty-printed JSON
+speechify api /v1/voices -q limit=10 -i        # query params; -i adds status + headers
+speechify api /v1/audio/speech \
   -f input="hello" -f voice_id=george          # repeatable -f builds a JSON body (implies POST)
-speechifyai api /v1/x -X POST -d @body.json      # raw body from @file, or - for stdin
-speechifyai api /v1/x -H "X-Debug: 1"            # extra headers
+speechify api /v1/x -X POST -d @body.json      # raw body from @file, or - for stdin
+speechify api /v1/x -H "X-Debug: 1"            # extra headers
 ```
 
 The response body is written to stdout (pretty-printed when JSON); a non-2xx
@@ -168,10 +168,10 @@ full `https://…` endpoint is used as-is.
 ## MCP server
 
 > **Alpha — expect changes.** The tool implementations behind this command are
-> expected to move to a hosted server, with `speechifyai mcp` becoming a relay
+> expected to move to a hosted server, with `speechify mcp` becoming a relay
 > to it. Don't build on the MCP surface in its current form.
 
-`speechifyai mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
+`speechify mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
 server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
 directly. Tools:
 
@@ -181,26 +181,26 @@ directly. Tools:
   *(requires a session or API key)*
 
 ```bash
-speechifyai mcp                      # serve over stdio (the usual MCP transport)
-speechifyai mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
+speechify mcp                      # serve over stdio (the usual MCP transport)
+speechify mcp --http --port 3000   # serve streamable HTTP at POST /mcp instead
 ```
 
 All three tools are always registered, so they stay discoverable to agents
 regardless of auth state. Auth is resolved **per tool call**: a long-running
 server keeps working as short-lived ID tokens roll over, and a server started
-before `speechifyai login` picks up the session the moment you log in — no
+before `speechify login` picks up the session the moment you log in — no
 restart. Calling an authenticated tool without a session returns a clear
-"run `speechifyai login`" error instead of the tool not existing.
+"run `speechify login`" error instead of the tool not existing.
 
 ### Install into a client
 
-`speechifyai mcp install` writes the server into a client's MCP config for you:
+`speechify mcp install` writes the server into a client's MCP config for you:
 
 ```bash
-speechifyai mcp install --all                       # every detected client
-speechifyai mcp install --client claude-code cursor # specific clients
-speechifyai mcp install --print                     # print the config block, write nothing
-speechifyai mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechify mcp install --all                       # every detected client
+speechify mcp install --client claude-code cursor # specific clients
+speechify mcp install --print                     # print the config block, write nothing
+speechify mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
 ```
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
@@ -219,7 +219,7 @@ on your `PATH`):
 }
 ```
 
-Run `speechifyai mcp install --print` to see the exact command for your setup — until
+Run `speechify mcp install --print` to see the exact command for your setup — until
 the CLI is published, it spawns the running binary by absolute path.
 
 ## Development
