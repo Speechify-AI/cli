@@ -148,13 +148,17 @@ Practical consequences:
   interactive walk can't branch on it either. Prefer a subcommand with its own
   flat input set, or extend `InputField` deliberately.
 
-## `@speechify/api` SDK facts (v3)
+## `@speechify/api` SDK facts (v4)
 
 `new SpeechifyClient({ apiKey: <bearer>, headers })`; methods are
 `client.audio.speech(...)` / `client.voices.list()` (NOT `client.tts.*`). Fields
 are **snake_case** (`voice_id`, `audio_format`). `voices.list()` returns a
 paginated `Page` — an **async iterable**, iterated with `for await (const voice
 of client.voices.list())` in `core/voices.ts` (follows pages to exhaustion).
+`client.audio.stream(req)` takes a **wrapper** `{ Accept?, body: GetStreamRequest }`:
+v4 hoisted the streaming Accept header out of the body, so synthesis params
+(`input`, `voice_id`, `output_format`, `model`, …) go inside `body` and the
+container header sits beside it (see `streamSpeech` in `core/speech.ts`).
 `SpeechifyError` carries `.statusCode` + `.body` (the
 `{ error: { code, message, fields }, request_id }` envelope). It accepts a
 Firebase ID token as the Bearer, so TTS works in console mode.
