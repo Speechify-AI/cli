@@ -21,6 +21,7 @@
     "url": "https://github.com/Speechify-AI/cli/issues"
   },
   "author": "Speechify",
+  "license": "MIT",
   "keywords": [
     "speechify",
     "text-to-speech",
