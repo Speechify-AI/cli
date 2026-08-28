@@ -32,12 +32,12 @@ const encoder = new TextEncoder();
 const response = {
   chunks: ["audio-"] as string[],
   headers: {} as Record<string, string>,
-  requests: [] as Speechify.GetStreamRequest[],
+  requests: [] as Speechify.StreamAudioRequest[],
 };
 
 const fakeClient = {
   audio: {
-    stream: (request: Speechify.GetStreamRequest) => ({
+    stream: (request: Speechify.StreamAudioRequest) => ({
       withRawResponse: async () => {
         response.requests.push(request);
         return {
@@ -123,11 +123,13 @@ describe("say --stream", () => {
 
     expect(response.requests).toHaveLength(1);
     expect(response.requests[0]).toMatchObject({
-      input: "hello",
-      voice_id: "henry",
-      model: "simba-3.2",
-      language: "en-US",
       Accept: "audio/ogg",
+      body: {
+        input: "hello",
+        voice_id: "henry",
+        model: "simba-3.2",
+        language: "en-US",
+      },
     });
   });
 
@@ -164,7 +166,7 @@ describe("say --stream", () => {
     response.headers = { "content-type": "audio/L16;rate=16000;channels=1" };
     await run("--stream", "--output-format", "pcm_16000", "--json");
 
-    expect(response.requests[0]).toMatchObject({ output_format: "pcm_16000" });
+    expect(response.requests[0]).toMatchObject({ body: { output_format: "pcm_16000" } });
     expect(response.requests[0]?.Accept).toBeUndefined();
     expect(JSON.parse(stdout)).toMatchObject({
       path: "speech.pcm",

@@ -98,7 +98,7 @@ describe("synthesize", () => {
 // Minimal fake of the surface streamSpeech() touches: client.audio.stream(req)
 // returns an HttpResponsePromise, unwrapped with withRawResponse().
 function fakeStreamClient(options: {
-  capture?: (req: Speechify.GetStreamRequest) => void;
+  capture?: (req: Speechify.StreamAudioRequest) => void;
   chunks?: string[];
   headers?: Record<string, string>;
   bodyIsNull?: boolean;
@@ -106,7 +106,7 @@ function fakeStreamClient(options: {
   const encoder = new TextEncoder();
   return {
     audio: {
-      stream: (req: Speechify.GetStreamRequest) => ({
+      stream: (req: Speechify.StreamAudioRequest) => ({
         withRawResponse: async () => {
           options.capture?.(req);
           return {
@@ -209,7 +209,7 @@ describe("describeStreamAudio", () => {
 
 describe("streamSpeech", () => {
   it("sends the container as the Accept header and defaults the voice", async () => {
-    let captured: Speechify.GetStreamRequest | undefined;
+    let captured: Speechify.StreamAudioRequest | undefined;
     const result = await streamSpeech(
       fakeStreamClient({
         capture: (req) => {
@@ -221,16 +221,16 @@ describe("streamSpeech", () => {
     );
 
     expect(captured?.Accept).toBe("audio/mpeg");
-    expect(captured?.output_format).toBeUndefined();
-    expect(captured?.voice_id).toBe("george");
-    expect(captured?.options).toBeUndefined();
+    expect(captured?.body.output_format).toBeUndefined();
+    expect(captured?.body.voice_id).toBe("george");
+    expect(captured?.body.options).toBeUndefined();
     expect(result.audio).toEqual({ codec: "mp3", extension: "mp3", headerless: false });
     expect(result.contentType).toBe("audio/mpeg");
     expect(result.requestId).toBe("req_123");
   });
 
   it("sends output_format instead of Accept, since it overrides the header server-side", async () => {
-    let captured: Speechify.GetStreamRequest | undefined;
+    let captured: Speechify.StreamAudioRequest | undefined;
     const result = await streamSpeech(
       fakeStreamClient({
         capture: (req) => {
@@ -241,16 +241,16 @@ describe("streamSpeech", () => {
       { input: "hello", outputFormat: "ulaw_8000", voiceId: "henry", model: "simba-3.2", language: "en-US" },
     );
 
-    expect(captured?.output_format).toBe("ulaw_8000");
+    expect(captured?.body.output_format).toBe("ulaw_8000");
     expect(captured?.Accept).toBeUndefined();
-    expect(captured?.voice_id).toBe("henry");
-    expect(captured?.model).toBe("simba-3.2");
-    expect(captured?.language).toBe("en-US");
+    expect(captured?.body.voice_id).toBe("henry");
+    expect(captured?.body.model).toBe("simba-3.2");
+    expect(captured?.body.language).toBe("en-US");
     expect(result.audio).toEqual({ codec: "ulaw", extension: "ulaw", sampleRate: 8000, headerless: true });
   });
 
   it("maps the normalization options and omits the ones left unset", async () => {
-    let captured: Speechify.GetStreamRequest | undefined;
+    let captured: Speechify.StreamAudioRequest | undefined;
     await streamSpeech(
       fakeStreamClient({
         capture: (req) => {
@@ -260,7 +260,7 @@ describe("streamSpeech", () => {
       { input: "hello", textNormalization: false },
     );
 
-    expect(captured?.options).toEqual({ text_normalization: false });
+    expect(captured?.body.options).toEqual({ text_normalization: false });
   });
 
   it("yields the body chunk by chunk without buffering", async () => {

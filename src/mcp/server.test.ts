@@ -242,7 +242,9 @@ describe("stream_text_to_speech tool", () => {
       arguments: { input: "hello", outputPath: outPath, audioFormat: "ogg", voiceId: "henry" },
     });
 
-    expect(sdk.stream).toHaveBeenCalledWith(expect.objectContaining({ Accept: "audio/ogg", voice_id: "henry" }));
+    expect(sdk.stream).toHaveBeenCalledWith(
+      expect.objectContaining({ Accept: "audio/ogg", body: expect.objectContaining({ voice_id: "henry" }) }),
+    );
     await client.close();
   });
 });

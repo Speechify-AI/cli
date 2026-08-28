@@ -269,14 +269,10 @@ export async function streamSpeech(client: SpeechifyClient, opts: StreamSpeechOp
   assertStreamFormatChoice(opts.format, opts.outputFormat);
 
   const hasOptions = opts.loudnessNormalization !== undefined || opts.textNormalization !== undefined;
-  const request: Speechify.GetStreamRequest = {
+  const requestBody: Speechify.GetStreamRequest = {
     input: opts.input,
     voice_id: opts.voiceId ?? DEFAULT_VOICE,
-    // Exactly one of the two selects the audio: output_format when given,
-    // otherwise the Accept header.
-    ...(opts.outputFormat
-      ? { output_format: opts.outputFormat }
-      : { Accept: STREAM_ACCEPT[opts.format ?? DEFAULT_STREAM_FORMAT] }),
+    ...(opts.outputFormat ? { output_format: opts.outputFormat } : {}),
     ...(opts.model ? { model: opts.model } : {}),
     ...(opts.language ? { language: opts.language } : {}),
     ...(hasOptions
@@ -287,6 +283,14 @@ export async function streamSpeech(client: SpeechifyClient, opts: StreamSpeechOp
           },
         }
       : {}),
+  };
+
+  // v4 splits the stream request: the Accept header rides alongside the body,
+  // not inside it. Send exactly one selector — output_format in the body when
+  // given, otherwise the Accept header (output_format overrides it server-side).
+  const request: Speechify.StreamAudioRequest = {
+    ...(opts.outputFormat ? {} : { Accept: STREAM_ACCEPT[opts.format ?? DEFAULT_STREAM_FORMAT] }),
+    body: requestBody,
   };
 
   const { data, rawResponse } = await client.audio.stream(request).withRawResponse();
