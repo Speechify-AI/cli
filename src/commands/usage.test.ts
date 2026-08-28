@@ -55,7 +55,7 @@ describe("usage requests", () => {
     try {
       await buildProgram().parseAsync([
         "node",
-        "speechifyai",
+        "speechify",
         "usage",
         "requests",
         "--method",
@@ -96,7 +96,7 @@ describe("usage requests", () => {
       });
     const cap = silence();
     try {
-      await buildProgram().parseAsync(["node", "speechifyai", "--json", "usage", "requests", "--all"]);
+      await buildProgram().parseAsync(["node", "speechify", "--json", "usage", "requests", "--all"]);
     } finally {
       cap.restore();
     }
@@ -111,7 +111,7 @@ describe("usage requests — invalid numeric flags", () => {
     const cap = silence();
     try {
       await expect(
-        buildProgram().parseAsync(["node", "speechifyai", "usage", "requests", "--limit", "abc"]),
+        buildProgram().parseAsync(["node", "speechify", "usage", "requests", "--limit", "abc"]),
       ).rejects.toMatchObject({ code: "invalid_argument", exitCode: 65 });
     } finally {
       cap.restore();
@@ -124,7 +124,7 @@ describe("usage requests — invalid numeric flags", () => {
     const cap = silence();
     try {
       await expect(
-        buildProgram().parseAsync(["node", "speechifyai", "usage", "requests", "--status", "abc"]),
+        buildProgram().parseAsync(["node", "speechify", "usage", "requests", "--status", "abc"]),
       ).rejects.toMatchObject({ code: "invalid_argument", exitCode: 65 });
     } finally {
       cap.restore();
@@ -147,7 +147,7 @@ describe("usage analytics", () => {
     });
     const cap = silence();
     try {
-      await buildProgram().parseAsync(["node", "speechifyai", "usage", "analytics", "--granularity", "1h"]);
+      await buildProgram().parseAsync(["node", "speechify", "usage", "analytics", "--granularity", "1h"]);
     } finally {
       cap.restore();
     }

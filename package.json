@@ -1,17 +1,38 @@
 {
-  "name": "@speechifyai/cli",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@speechify/cli",
+  "version": "0.0.1",
   "description": "SpeechifyAI command-line companion to the developer console — synthesize speech and manage voices from your terminal.",
   "type": "module",
   "bin": {
-    "speechifyai": "./dist/bin.js"
+    "speechify": "./dist/bin.js"
   },
   "files": [
     "dist"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Speechify-AI/cli.git"
+  },
+  "homepage": "https://github.com/Speechify-AI/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Speechify-AI/cli/issues"
+  },
+  "author": "Speechify",
+  "license": "MIT",
+  "keywords": [
+    "speechify",
+    "text-to-speech",
+    "tts",
+    "cli",
+    "voice",
+    "ai",
+    "mcp"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",

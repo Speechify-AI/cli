@@ -1,4 +1,4 @@
-// `speechifyai voices list` / `voices get` — the voice catalog (built-in + cloned).
+// `speechify voices list` / `voices get` — the voice catalog (built-in + cloned).
 import type { SpeechifyClient } from "@speechify/api";
 import { type Command, Option } from "commander";
 import { requireWorkspace, resolveAuth } from "../auth/session.js";
@@ -15,7 +15,7 @@ interface VoicesListOptions extends GlobalOptions, VoiceFilters {}
 const GET_INPUTS: InputField[] = [
   {
     name: "voice-id",
-    description: "Id of the voice to fetch (see `speechifyai voices list`)",
+    description: "Id of the voice to fetch (see `speechify voices list`)",
     required: true,
     flag: "<voice-id> (positional)",
   },
@@ -97,9 +97,9 @@ export function registerVoicesCommand(program: Command): void {
           // Count to stderr so stdout stays a clean, greppable table.
           logInfo(`\n${summary}.`);
         },
-        context: `Listed ${summary} available to this workspace${isFiltered ? " (after --locale/--gender/--search filtering)" : ""}. Use a voice's \`id\` as --voice for \`speechifyai say\`.`,
+        context: `Listed ${summary} available to this workspace${isFiltered ? " (after --locale/--gender/--search filtering)" : ""}. Use a voice's \`id\` as --voice for \`speechify say\`.`,
         hints: [
-          'Synthesize with `speechifyai say "text" --voice <id>`.',
+          'Synthesize with `speechify say "text" --voice <id>`.',
           ...(isFiltered ? [] : ["Narrow with --locale <prefix>, --gender <g>, or --search <text>."]),
         ],
       });
@@ -108,13 +108,13 @@ export function registerVoicesCommand(program: Command): void {
   voices
     .command("get [voice-id]")
     .description("Show one voice: its models, locales, tags, and preview URLs.")
-    .addHelpText("after", "\nExample:\n  $ speechifyai voices get george\n  $ speechifyai voices get george --json")
+    .addHelpText("after", "\nExample:\n  $ speechify voices get george\n  $ speechify voices get george --json")
     .action(async (voiceIdArg: string | undefined, _options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions;
       const mode = await outputMode(opts);
       if (!voiceIdArg) {
         if (!(await isInteractive(opts))) throw new NeedsInputError("voices get", GET_INPUTS, ["voice-id"]);
-        throw new CliError("A voice id is required: `speechifyai voices get <voice-id>`.", {
+        throw new CliError("A voice id is required: `speechify voices get <voice-id>`.", {
           exitCode: ExitCode.DATA_ERR,
           code: "missing_input",
         });
@@ -129,7 +129,7 @@ export function registerVoicesCommand(program: Command): void {
           modelNames.join(", ") || "no models"
         }. Unlike \`voices list\`, each entry in \`models\` is an object with \`name\` and per-locale \`languages\`.`,
         hints: [
-          `Synthesize with \`speechifyai say "text" --voice ${voice.id}\`.`,
+          `Synthesize with \`speechify say "text" --voice ${voice.id}\`.`,
           "Read `models[].name` for the values `say --model` accepts, and `models[].languages[].locale` to check a locale before synthesizing.",
         ],
       });

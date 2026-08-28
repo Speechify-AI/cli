@@ -55,7 +55,7 @@ export function needsInputPayload(err: NeedsInputError): {
     command: err.command,
     missing: err.missing,
     inputs: err.fields,
-    hint: `Collect the inputs above (especially the required ones), then re-run \`speechifyai ${err.command}\` providing them as flags/arguments.`,
+    hint: `Collect the inputs above (especially the required ones), then re-run \`speechify ${err.command}\` providing them as flags/arguments.`,
   };
 }
 
@@ -66,7 +66,7 @@ export function needsInputPayload(err: NeedsInputError): {
  */
 export function emitNeedsInput(err: NeedsInputError, mode: OutputMode): void {
   if (mode === "human") {
-    let msg = `\n\`speechifyai ${err.command}\` needs input but isn't interactive (CI, agent, non-TTY, or --no-input).\nProvide:\n`;
+    let msg = `\n\`speechify ${err.command}\` needs input but isn't interactive (CI, agent, non-TTY, or --no-input).\nProvide:\n`;
     for (const f of err.fields) {
       const req = f.required ? " (required)" : "";
       const def = f.default ? ` [default: ${f.default}]` : "";

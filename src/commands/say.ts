@@ -1,4 +1,4 @@
-// `speechifyai say` — synthesize text to an audio file (or stdout), optionally
+// `speechify say` — synthesize text to an audio file (or stdout), optionally
 // playing it. The headline command.
 //
 // Two routes sit behind it. By default the whole clip comes back in one JSON
@@ -62,7 +62,7 @@ const SAY_INPUTS: InputField[] = [
   },
   {
     name: "voice",
-    description: "Voice id (see `speechifyai voices list`)",
+    description: "Voice id (see `speechify voices list`)",
     flag: "--voice <id>",
     default: DEFAULT_VOICE,
   },
@@ -131,7 +131,7 @@ export function registerSayCommand(program: Command): void {
   program
     .command("say [text]")
     .description("Synthesize speech from text and save (or play) the audio.")
-    .option("-v, --voice <id>", "voice id (see `speechifyai voices list`)", DEFAULT_VOICE)
+    .option("-v, --voice <id>", "voice id (see `speechify voices list`)", DEFAULT_VOICE)
     .addOption(new Option("--model <model>", "synthesis model").choices([...SPEECH_MODELS]))
     .addOption(
       new Option("-f, --format <format>", "output audio format").choices([...AUDIO_FORMATS]).default(DEFAULT_FORMAT),
@@ -158,10 +158,10 @@ export function registerSayCommand(program: Command): void {
       [
         "",
         "Examples:",
-        '  speechifyai say "Hello there" --voice henry --play',
-        "  speechifyai say --stream --input-file article.txt --out narration.mp3   # long-form, written as it arrives",
-        '  speechifyai say --stream "Live" --out - | ffplay -nodisp -autoexit -i -  # play while it downloads',
-        '  speechifyai say --stream "Telephony" --output-format ulaw_8000 --out call.ulaw',
+        '  speechify say "Hello there" --voice henry --play',
+        "  speechify say --stream --input-file article.txt --out narration.mp3   # long-form, written as it arrives",
+        '  speechify say --stream "Live" --out - | ffplay -nodisp -autoexit -i -  # play while it downloads',
+        '  speechify say --stream "Telephony" --output-format ulaw_8000 --out call.ulaw',
       ].join("\n"),
     )
     .action(async (textArg: string | undefined, _options: unknown, command: Command) => {

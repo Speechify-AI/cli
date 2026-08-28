@@ -1,4 +1,4 @@
-// `speechifyai keys` — manage workspace API keys (list/create/get/update/revoke).
+// `speechify keys` — manage workspace API keys (list/create/get/update/revoke).
 // Only a console-user session can mint keys; an API-key-authed caller cannot. The
 // create secret is printed once (stdout), everything else is masked.
 import { type Command, Option } from "commander";
@@ -54,7 +54,7 @@ export function registerKeysCommand(program: Command): void {
         data: list,
         human: () => {
           if (list.length === 0) {
-            logInfo("No API keys in this workspace. Create one with `speechifyai keys create <name>`.");
+            logInfo("No API keys in this workspace. Create one with `speechify keys create <name>`.");
             return;
           }
           const table = renderTable(
@@ -71,7 +71,7 @@ export function registerKeysCommand(program: Command): void {
           logInfo(`\n${list.length} key${list.length === 1 ? "" : "s"}.`);
         },
         context: `Listed ${list.length} API key${list.length === 1 ? "" : "s"} in the workspace. Secrets are masked — the plaintext is only shown once, at create time.`,
-        hints: ["Create one with `speechifyai keys create <name>`.", "Revoke one with `speechifyai keys revoke <id>`."],
+        hints: ["Create one with `speechify keys create <name>`.", "Revoke one with `speechify keys revoke <id>`."],
       });
     });
 
@@ -88,7 +88,7 @@ export function registerKeysCommand(program: Command): void {
       const mode = await outputMode(opts);
       if (!nameArg) {
         if (!(await isInteractive(opts))) throw new NeedsInputError("keys create", CREATE_INPUTS, ["name"]);
-        throw new CliError("A name is required: `speechifyai keys create <name>`.", {
+        throw new CliError("A name is required: `speechify keys create <name>`.", {
           exitCode: ExitCode.DATA_ERR,
           code: "missing_input",
         });
@@ -106,7 +106,7 @@ export function registerKeysCommand(program: Command): void {
         context: `Created API key "${created.name}" (${created.id}). The plaintext secret is in data.apiKey and is shown only once — store it now.`,
         hints: [
           "Use the secret as `--api-key <secret>` or via $SPEECHIFY_API_KEY.",
-          "List keys with `speechifyai keys list`.",
+          "List keys with `speechify keys list`.",
         ],
       });
     });
@@ -175,7 +175,7 @@ export function registerKeysCommand(program: Command): void {
         data: { id, revoked: true },
         human: () => logInfo(`Revoked API key ${id}.`),
         context: `Revoked API key ${id}. This is permanent — any client using it now gets 401.`,
-        hints: ["List remaining keys with `speechifyai keys list`."],
+        hints: ["List remaining keys with `speechify keys list`."],
       });
     });
 }

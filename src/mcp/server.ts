@@ -4,7 +4,7 @@
 // All tools are always registered so they stay discoverable regardless of auth
 // state. `search_docs` needs no auth. The TTS tools resolve our auth (console
 // Bearer + workspace, or an API key) FRESH per call via resolveAuth(): a server
-// started before `speechifyai login` starts working the moment you log in — no
+// started before `speechify login` starts working the moment you log in — no
 // restart — and a short-lived ID token self-heals. When auth is missing, the call
 // surfaces a clear "run login" error (the MCP SDK returns the CliError message as
 // an isError tool result) rather than the tool silently not existing.
@@ -41,7 +41,7 @@ const DOCS_MCP_URL = "https://docs.speechify.ai/_mcp/server";
  * it, and return the text blocks. No API key required.
  */
 async function callDocsSearch(query: string): Promise<string> {
-  const client = new Client({ name: "speechifyai-cli", version: __CLI_VERSION__ });
+  const client = new Client({ name: "speechify-cli", version: __CLI_VERSION__ });
   await client.connect(new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL)));
   try {
     const { tools } = await client.listTools();
@@ -75,7 +75,7 @@ export interface ServerOptions {
  * resolve auth per call and surface a clear error when the caller isn't authed.
  */
 export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
-  const server = new McpServer({ name: "speechifyai", version: __CLI_VERSION__ });
+  const server = new McpServer({ name: "speechify", version: __CLI_VERSION__ });
 
   server.registerTool(
     "search_docs",
@@ -105,7 +105,7 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
     "list_voices",
     {
       description:
-        "List the Speechify voices available to the authenticated account. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+        "List the Speechify voices available to the authenticated account. Requires a `speechify login` session or SPEECHIFY_API_KEY.",
       inputSchema: {},
     },
     async () => {
@@ -118,7 +118,7 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
     "get_voice",
     {
       description:
-        "Fetch one Speechify voice by id, with the models it supports, the locales each model covers, its tags, and its preview URLs. Use it to confirm a voice id is usable before synthesizing, instead of listing the whole catalog. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+        "Fetch one Speechify voice by id, with the models it supports, the locales each model covers, its tags, and its preview URLs. Use it to confirm a voice id is usable before synthesizing, instead of listing the whole catalog. Requires a `speechify login` session or SPEECHIFY_API_KEY.",
       inputSchema: {
         voiceId: z.string().describe("Id of the voice to fetch (see list_voices), e.g. 'george'"),
       },
@@ -133,7 +133,7 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
     "text_to_speech",
     {
       description:
-        "Synthesize speech audio from text or SSML using Speechify. Returns the audio inline, or writes it to outputPath when provided. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+        "Synthesize speech audio from text or SSML using Speechify. Returns the audio inline, or writes it to outputPath when provided. Requires a `speechify login` session or SPEECHIFY_API_KEY.",
       inputSchema: {
         input: z.string().describe("Plain text or SSML to synthesize"),
         voiceId: z
@@ -188,7 +188,7 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
       description:
         `Synthesize long-form speech (up to ${MAX_STREAM_INPUT} characters) and write it to outputPath as it is generated. ` +
         `Reach for this instead of text_to_speech whenever the text exceeds ${MAX_SPEECH_INPUT} characters, or when the audio should stay out of the conversation. ` +
-        "Returns the path and byte count, never the audio itself. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+        "Returns the path and byte count, never the audio itself. Requires a `speechify login` session or SPEECHIFY_API_KEY.",
       inputSchema: {
         input: z.string().describe("Plain text or SSML to synthesize"),
         outputPath: z

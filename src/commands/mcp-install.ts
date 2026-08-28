@@ -1,4 +1,4 @@
-// `speechifyai mcp install` — write the SpeechifyAI MCP server into local AI clients'
+// `speechify mcp install` — write the SpeechifyAI MCP server into local AI clients'
 // config files (Claude Code, Cursor, Claude Desktop, Windsurf, VS Code).
 //
 // Unlike an API-key CLI, our spawned server resolves auth from the stored console
@@ -93,13 +93,16 @@ export function clients(): McpClient[] {
 
 /**
  * How a client should launch our server: re-spawn the very binary running now, so
- * it works whether invoked via `node dist/bin.js`, a global `speechifyai` shim, or
- * npx. (Once published, this can simplify to `npx -y @speechifyai/cli mcp`.)
+ * it works whether invoked via `node dist/bin.js`, a global `speechify` shim, or
+ * npx. (Once published, this can simplify to `npx -y @speechify/cli mcp`.)
  */
 export function cliInvocation(): CliInvocation {
+  // `mcp` is alpha-gated, so the config we write must carry --accept-alpha or the
+  // spawned server would refuse to start. Installing already required the caller
+  // to pass --accept-alpha, so the opt-in is theirs, not implicit.
   const script = process.argv[1];
-  if (!script) return { command: "speechifyai", args: ["mcp"] };
-  return { command: process.execPath, args: [path.resolve(script), "mcp"] };
+  if (!script) return { command: "speechify", args: ["mcp", "--accept-alpha"] };
+  return { command: process.execPath, args: [path.resolve(script), "mcp", "--accept-alpha"] };
 }
 
 /** Build the per-client server entry (pure). */
@@ -114,7 +117,7 @@ export function serverEntry(opts: {
   return entry;
 }
 
-/** Merge a `speechifyai` server entry into a client config under its servers key (pure). */
+/** Merge a `speechify` server entry into a client config under its servers key (pure). */
 export function mergeConfig(
   existing: Record<string, unknown>,
   serversKey: ServersKey,
@@ -122,7 +125,7 @@ export function mergeConfig(
 ): Record<string, unknown> {
   const config = { ...existing };
   const servers = { ...((config[serversKey] as Record<string, unknown>) ?? {}) };
-  servers.speechifyai = entry;
+  servers.speechify = entry;
   config[serversKey] = servers;
   return config;
 }
@@ -174,7 +177,7 @@ export async function runMcpInstall(opts: McpInstallOptions): Promise<void> {
     const target = all.find((c) => c.id === opts.client?.[0]) ?? all[0];
     if (!target) throw new CliError("No MCP clients are defined.", { exitCode: ExitCode.GENERIC });
     printJson({
-      [target.serversKey]: { speechifyai: serverEntry({ needsType: target.needsType, apiKey, invocation }) },
+      [target.serversKey]: { speechify: serverEntry({ needsType: target.needsType, apiKey, invocation }) },
     });
     return;
   }

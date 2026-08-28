@@ -43,7 +43,7 @@ export async function exchangeRefreshToken(
     } catch {
       // keep the status-based detail
     }
-    throw new CliError(`Session expired or invalid (${detail}). Run \`speechifyai login\` again.`, {
+    throw new CliError(`Session expired or invalid (${detail}). Run \`speechify login\` again.`, {
       exitCode: ExitCode.NO_PERM,
       code: "auth_refresh_failed",
     });

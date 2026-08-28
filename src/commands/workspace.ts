@@ -1,4 +1,4 @@
-// `speechifyai workspace list | use <id> | current` — pick the active workspace,
+// `speechify workspace list | use <id> | current` — pick the active workspace,
 // stored and sent as X-Tenant-ID on every console request.
 import type { Command } from "commander";
 import { requireConsole, resolveAuth } from "../auth/session.js";
@@ -40,7 +40,7 @@ export function registerWorkspaceCommand(program: Command): void {
         context: current
           ? `Listed your workspaces; the active one (id ${current}) is marked \`current: true\`.`
           : "Listed your workspaces; none is selected yet.",
-        hints: ["Select one with `speechifyai workspace use <id>`."],
+        hints: ["Select one with `speechify workspace use <id>`."],
       });
     });
 
@@ -54,7 +54,7 @@ export function registerWorkspaceCommand(program: Command): void {
       requireConsole(auth);
       const match = (await listWorkspaces(createHttpClient(auth))).find((w) => w.id === id);
       if (!match) {
-        throw new CliError(`Workspace ${id} is not one of your workspaces (see \`speechifyai workspace list\`).`, {
+        throw new CliError(`Workspace ${id} is not one of your workspaces (see \`speechify workspace list\`).`, {
           exitCode: ExitCode.DATA_ERR,
           code: "workspace_not_found",
         });
@@ -78,14 +78,14 @@ export function registerWorkspaceCommand(program: Command): void {
         data: { workspace_id: current ?? null },
         human: () =>
           logInfo(
-            current ? `Active workspace: ${current}` : "No workspace selected. Run `speechifyai workspace use <id>`.",
+            current ? `Active workspace: ${current}` : "No workspace selected. Run `speechify workspace use <id>`.",
           ),
         context: current
           ? `The active workspace is ${current}; it's sent as X-Tenant-ID on console requests.`
           : "No workspace is selected, so workspace-scoped commands will fail until one is chosen.",
         hints: current
           ? undefined
-          : ["Select one with `speechifyai workspace use <id>` (list: `speechifyai workspace list`)."],
+          : ["Select one with `speechify workspace use <id>` (list: `speechify workspace list`)."],
       });
     });
 }

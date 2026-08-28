@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove `speechifyai say --stream` behaves, without reading the diff.
+# Prove `speechify say --stream` behaves, without reading the diff.
 #
 # Three groups of checks:
 #   OFFLINE  no network, no credentials  — flag validation

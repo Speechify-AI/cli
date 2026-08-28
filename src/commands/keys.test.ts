@@ -59,7 +59,7 @@ afterEach(() => vi.clearAllMocks());
 
 describe("keys create — missing name, non-interactive", () => {
   it("throws NeedsInputError (exit 2) naming the command and field", async () => {
-    await expect(buildProgram().parseAsync(["node", "speechifyai", "keys", "create"])).rejects.toMatchObject({
+    await expect(buildProgram().parseAsync(["node", "speechify", "keys", "create"])).rejects.toMatchObject({
       name: "NeedsInputError",
       command: "keys create",
       missing: ["name"],
@@ -80,7 +80,7 @@ describe("keys create — success", () => {
     });
     const cap = capture();
     try {
-      await buildProgram().parseAsync(["node", "speechifyai", "keys", "create", "ci", "--scope", "audio:all"]);
+      await buildProgram().parseAsync(["node", "speechify", "keys", "create", "ci", "--scope", "audio:all"]);
     } finally {
       cap.restore();
     }
@@ -100,7 +100,7 @@ describe("keys create — success", () => {
     });
     const cap = capture();
     try {
-      await buildProgram().parseAsync(["node", "speechifyai", "--json", "keys", "create", "ci"]);
+      await buildProgram().parseAsync(["node", "speechify", "--json", "keys", "create", "ci"]);
     } finally {
       cap.restore();
     }

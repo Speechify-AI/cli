@@ -86,7 +86,7 @@ function capture() {
 async function runGet(args: string[]): Promise<{ stdout: string; stderr: string }> {
   const io = capture();
   try {
-    await buildProgram().parseAsync(["node", "speechifyai", "voices", "get", ...args]);
+    await buildProgram().parseAsync(["node", "speechify", "voices", "get", ...args]);
     return { stdout: io.stdout(), stderr: io.stderr() };
   } finally {
     io.restore();
@@ -97,7 +97,7 @@ afterEach(() => vi.clearAllMocks());
 
 describe("voices get — missing id, non-interactive", () => {
   it("throws NeedsInputError (exit 2) naming the command and field", async () => {
-    await expect(buildProgram().parseAsync(["node", "speechifyai", "voices", "get"])).rejects.toMatchObject({
+    await expect(buildProgram().parseAsync(["node", "speechify", "voices", "get"])).rejects.toMatchObject({
       name: "NeedsInputError",
       command: "voices get",
       missing: ["voice-id"],

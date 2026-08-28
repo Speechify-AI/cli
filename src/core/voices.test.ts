@@ -212,7 +212,7 @@ describe("getVoice", () => {
       exitCode: ExitCode.UNAVAILABLE,
     });
     expect((err as CliError).message).toContain('"nope"');
-    expect((err as CliError).message).toContain("speechifyai voices list");
+    expect((err as CliError).message).toContain("speechify voices list");
     // The original survives for anyone unwrapping the chain.
     expect((err as CliError).cause).toBeInstanceOf(SpeechifyError);
   });

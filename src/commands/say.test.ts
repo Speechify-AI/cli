@@ -29,12 +29,12 @@ describe("say — missing text, non-interactive", () => {
   it("throws NeedsInputError (exit 2) instead of a generic data error", async () => {
     // In the test runner stdin/stdout aren't TTYs, so isInteractive() is false.
     const program = buildProgram();
-    await expect(program.parseAsync(["node", "speechifyai", "say"])).rejects.toBeInstanceOf(NeedsInputError);
+    await expect(program.parseAsync(["node", "speechify", "say"])).rejects.toBeInstanceOf(NeedsInputError);
   });
 
   it("the needs-input error names the command and the missing field", async () => {
     const program = buildProgram();
-    await expect(program.parseAsync(["node", "speechifyai", "say"])).rejects.toMatchObject({
+    await expect(program.parseAsync(["node", "speechify", "say"])).rejects.toMatchObject({
       command: "say",
       missing: ["text"],
       exitCode: 2,
@@ -45,13 +45,13 @@ describe("say — missing text, non-interactive", () => {
 describe("say — stdout conflicts", () => {
   it("rejects --json with --out - (both claim stdout)", async () => {
     await expect(
-      buildProgram().parseAsync(["node", "speechifyai", "say", "hi", "--out", "-", "--json"]),
+      buildProgram().parseAsync(["node", "speechify", "say", "hi", "--out", "-", "--json"]),
     ).rejects.toMatchObject({ exitCode: 65 });
   });
 
   it("rejects --agent-friendly with --out - (previously silently ignored)", async () => {
     await expect(
-      buildProgram().parseAsync(["node", "speechifyai", "say", "hi", "--out", "-", "--agent-friendly"]),
+      buildProgram().parseAsync(["node", "speechify", "say", "hi", "--out", "-", "--agent-friendly"]),
     ).rejects.toMatchObject({ exitCode: 65 });
   });
 });
