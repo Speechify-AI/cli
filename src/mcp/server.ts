@@ -2,19 +2,18 @@
 // Code, Cursor, Claude Desktop, …).
 //
 // All tools are always registered so they stay discoverable regardless of auth
-// state. `search_docs` needs no auth. The TTS tools resolve our auth (console
-// Bearer + workspace, or an API key) FRESH per call via resolveAuth(): a server
-// started before `speechify login` starts working the moment you log in — no
-// restart — and a short-lived ID token self-heals. When auth is missing, the call
-// surfaces a clear "run login" error (the MCP SDK returns the CliError message as
-// an isError tool result) rather than the tool silently not existing.
+// state. `search_docs` needs no auth. The TTS tools resolve our API key FRESH per
+// call via resolveAuth(): a server started before `speechify login` starts working
+// the moment a key is stored — no restart. When auth is missing, the call surfaces
+// a clear "run login" error (the MCP SDK returns the CliError message as an isError
+// tool result) rather than the tool silently not existing.
 import { writeFile } from "node:fs/promises";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { writeStreamToFile } from "../audio/sink.js";
-import { type AuthInput, requireWorkspace, resolveAuth } from "../auth/session.js";
+import { type AuthInput, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
 import { resolveTimeoutMs } from "../core/fetchWithTimeout.js";
 import {
@@ -87,15 +86,13 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
     async ({ query }) => ({ content: [{ type: "text", text: await callDocsSearch(query) }] }),
   );
 
-  // Resolve auth + a TTS client per call so the ID token stays fresh and a login
-  // that happens after the server starts is picked up without a restart. On
-  // failure this throws a CliError whose message the SDK returns as a tool error.
+  // Resolve auth + a TTS client per call so a login that happens after the server
+  // starts is picked up without a restart. On failure this throws a CliError whose
+  // message the SDK returns as a tool error.
   const ttsClient = async () => {
     const auth = await resolveAuth(authInput);
-    requireWorkspace(auth);
     return createClient({
       bearer: auth.bearer,
-      tenantId: auth.tenantId,
       apiVersion: auth.apiVersion,
       baseUrl: auth.baseUrl,
     });

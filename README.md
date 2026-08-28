@@ -1,56 +1,31 @@
 # SpeechifyAI CLI
 
-The command-line companion to the [Speechify developer console](https://console.speechify.ai).
-Log in as a console user, pick a workspace, then drive the API from your terminal.
+The command-line companion to the [Speechify API](https://speechify.ai).
+Authenticate with an API key, then drive the API from your terminal.
 
-> **Status: early.** Auth + workspace foundation, `say`, `voices list`,
-> [`keys`](#keys) and [`usage`](#usage), a raw [`api`](#api) passthrough, and an
-> [`mcp`](#mcp-server) server work today. Knowledge-base sync and conversations
-> are next. Not yet published to npm — run from source (see [Development](#development)).
+> **Status: early.** API-key auth, `say`, `voices list`/`get`, a raw
+> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) server work today. Not
+> yet published to npm — run from source (see [Development](#development)).
 
 ## Authentication
 
-The CLI authenticates as a **console user** and operates inside a **selected
-workspace** (sent as the `X-Tenant-ID` header), so it can reach the same surface
-as the web console. The durable credential is a Firebase refresh token, exchanged
-for short-lived ID tokens automatically.
+The CLI authenticates with a **Speechify API key** (`sk_…`). Get one from the
+[developer console](https://console.speechify.ai). Supply it per-run via
+`--api-key` / `$SPEECHIFY_API_KEY`, or persist it once:
 
 ```bash
-speechify login                 # browser sign-in (see the note below)
-speechify workspace list        # workspaces you belong to
-speechify workspace use ws_…    # select the active workspace
-speechify whoami                # who you are (email), auth mode, active workspace
-speechify whoami --check        # also verify the credential live; exits non-zero if invalid
-speechify logout
+speechify login --api-key sk_…  # validates the key against the API, then stores it
+speechify whoami                # how you're authenticated (flag / env / stored)
+speechify whoami --check        # also verify the key live; exits non-zero if invalid
+speechify logout                # forget the stored key
 ```
 
-> ⚠️ **Browser login depends on console-side `/cli/login` + `/cli/token`
-> endpoints that aren't live yet.** The CLI implements a PKCE authorization-code
-> flow (RFC 8252/7636): a loopback server receives only a single-use `code`,
-> which it exchanges over HTTPS for the credential — the durable token never
-> appears in a URL. Until the console endpoints ship, log in with a Firebase
-> refresh token directly:
-> ```bash
-> speechify login --refresh-token <token> --firebase-api-key <fb_web_api_key>
-> # or: export SPEECHIFY_FB_API_KEY=<fb_web_api_key>
-> ```
+Credential precedence per run: **`--api-key` → `$SPEECHIFY_API_KEY` → stored key.**
 
-**API-key mode (TTS only).** For the public text-to-speech surface you can skip
-console login entirely and use an API key — per-run via `--api-key` /
-`SPEECHIFY_API_KEY`, or persist one to the keychain:
-
-```bash
-speechify login --api-key sk_…   # validates the key, stores it, switches off any console session
-```
-
-This path can't reach workspace-scoped features (keys, usage, agents).
-
-Credential precedence per run: **`--api-key` → console session → stored API key.**
-
-**Where credentials live.** The session is stored in your **OS keychain**
-(Keychain on macOS, Credential Manager on Windows, Secret Service/libsecret on
-Linux) under the service `speechify-cli`. On hosts without a keychain backend
-(many headless/CI boxes) it falls back to an **AES-256-GCM encrypted file** at
+**Where the key lives.** It's stored in your **OS keychain** (Keychain on macOS,
+Credential Manager on Windows, Secret Service/libsecret on Linux) under the
+service `speechify-cli`. On hosts without a keychain backend (many headless/CI
+boxes) it falls back to an **AES-256-GCM encrypted file** at
 `~/.config/speechify/credentials.enc` (`0600`). A pre-existing plaintext
 `config.json` is migrated into the keychain on first use and then removed.
 `speechify logout` wipes all of them.
@@ -72,9 +47,8 @@ speechify voices list --locale en --gender female --search warm
 ```
 
 Add `--json` to any command for machine-readable stdout (human status goes to
-stderr, so stdout stays pipe-clean). `--workspace ws_…` overrides the active
-workspace for one command. Exit codes follow sysexits: `78` config/auth-missing,
-`77` auth, `75` rate-limited, `65` bad input, `69` upstream.
+stderr, so stdout stays pipe-clean). Exit codes follow sysexits: `78`
+config/auth-missing, `77` auth, `75` rate-limited, `65` bad input, `69` upstream.
 
 Every network call waits at most **30 s** for the server to start responding
 (exit `69`, code `request_timeout`); override with `SPEECHIFY_TIMEOUT_MS`.
@@ -104,52 +78,11 @@ $ speechify say --json < /dev/null
 # exit code 2
 ```
 
-## `keys`
-
-Manage the workspace's API keys. **Only a console-user session can mint keys** —
-something an API-key-authed tool can't do — so this is one of the clearest reasons
-to log in as a console user. Requires a selected workspace.
-
-```bash
-speechify keys list                           # table of keys (secrets masked)
-speechify keys create ci --scope audio:all    # create; repeat --scope for more, omit for full access
-speechify keys get key_…                       # one key's metadata
-speechify keys update key_… --name renamed     # rename, and/or --scope … to replace scopes
-speechify keys revoke key_…                    # permanently revoke (aliases: rm, delete)
-```
-
-`create` prints the plaintext secret **once**, on stdout — pipe it straight out
-(`speechify keys create ci --json | jq -r .apiKey`); every later read shows it
-masked and it can't be recovered. Scopes are drawn from `audio:all`,
-`voices:{read,write,all}`, `agent:{read,write,all}`, and
-`conversation:{read,write,all}`.
-
-## `usage`
-
-Inspect workspace API usage — the per-request log and aggregate analytics.
-Requires a selected workspace and the `usage.view` permission (owner, admin, or
-billing admin).
-
-```bash
-speechify usage requests                        # one page of the request log, newest first
-speechify usage requests \
-  --method GET POST --status 200 500 \            # filters: method(s), status(es), route,
-  --path /v1/audio --min-latency 100              #   latency, principal, and time window
-speechify usage requests --all                  # follow the cursor across all pages (bounded)
-speechify usage analytics --granularity 1h      # totals, per-bucket series, and busiest routes
-```
-
-The request log defaults to the last 7 days (capped at 30) and returns one
-cursor-paginated page; `--json` exposes `nextCursor`/`hasMore` so you can page
-with `--cursor`, or pass `--all` to follow it for you. `analytics` (alias `stats`)
-returns window totals, a per-bucket time series with p50/p95/p99 latency, and the
-top routes.
-
 ## `api`
 
 A raw, authenticated passthrough to any API endpoint (gh-api style) — for
-endpoints the typed commands don't cover yet. It reuses your session, so it sends
-the console Bearer **and** `X-Tenant-ID` (or an API key) automatically.
+endpoints the typed commands don't cover yet. It reuses your credential, so it
+sends the API key as a Bearer automatically.
 
 ```bash
 speechify api /v1/voices                       # GET, pretty-printed JSON
@@ -178,21 +111,20 @@ server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechif
 directly. Tools:
 
 - **`search_docs`** — search the public Speechify docs. No auth required.
-- **`list_voices`** — list account voices. *(requires a session or API key)*
+- **`list_voices`** — list account voices. *(requires an API key)*
 - **`text_to_speech`** — synthesize audio, returned inline or written to a path.
-  *(requires a session or API key)*
+  *(requires an API key)*
 
 ```bash
 speechify mcp --accept-alpha                    # serve over stdio (the usual MCP transport)
 speechify mcp --accept-alpha --http --port 3000 # serve streamable HTTP at POST /mcp instead
 ```
 
-All three tools are always registered, so they stay discoverable to agents
-regardless of auth state. Auth is resolved **per tool call**: a long-running
-server keeps working as short-lived ID tokens roll over, and a server started
-before `speechify login` picks up the session the moment you log in — no
-restart. Calling an authenticated tool without a session returns a clear
-"run `speechify login`" error instead of the tool not existing.
+All tools are always registered, so they stay discoverable to agents regardless
+of auth state. Auth is resolved **per tool call**, so a server started before
+`speechify login` picks up the key the moment it's stored — no restart. Calling
+an authenticated tool without a key returns a clear "run `speechify login`" error
+instead of the tool not existing.
 
 ### Install into a client
 
@@ -206,9 +138,10 @@ speechify mcp install --accept-alpha --client vscode --embed-key # bake $SPEECHI
 ```
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
-By default no credential is embedded — the spawned server reads your stored
-console session. Use `--embed-key` for the API-key path. An existing config that
-can't be parsed safely (e.g. JSONC with comments) is left untouched.
+By default no credential is embedded — the spawned server reads your stored API
+key. Use `--embed-key` to bake `$SPEECHIFY_API_KEY` into the entry instead. An
+existing config that can't be parsed safely (e.g. JSONC with comments) is left
+untouched.
 
 To wire it up manually instead, the stdio entry looks like this (once the CLI is
 on your `PATH`):
@@ -238,9 +171,7 @@ node dist/bin.js whoami
 
 ## Architecture
 
-`src/auth/` resolves a console session (Firebase refresh → ID token) or an API
-key into a single `AuthContext` (Bearer + `X-Tenant-ID`). `src/core/http.ts` is a
-small authed client for the console (internal-audience) endpoints the
-`@speechify/api` SDK doesn't cover; the SDK is still used for TTS. Commands in
-`src/commands/` are thin adapters over `src/core/`; `src/mcp/` builds the MCP
-server on top of the same `core/` services.
+`src/auth/session.ts` resolves an API key (flag / env / stored) into a single
+`AuthContext` (the Bearer). `src/core/client.ts` wraps the `@speechify/api` SDK
+for TTS. Commands in `src/commands/` are thin adapters over `src/core/`;
+`src/mcp/` builds the MCP server on top of the same `core/` services.

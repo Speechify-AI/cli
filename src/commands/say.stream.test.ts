@@ -16,8 +16,7 @@ vi.mock("../io.js", () => ({
 }));
 
 vi.mock("../auth/session.js", () => ({
-  resolveAuth: vi.fn().mockResolvedValue({ bearer: "token", tenantId: "ws_1", mode: "console" }),
-  requireWorkspace: vi.fn(),
+  resolveAuth: vi.fn().mockResolvedValue({ bearer: "sk_test", baseUrl: "https://api.example", keySource: "flag" }),
 }));
 
 vi.mock("../core/client.js", () => ({ createClient: vi.fn(() => fakeClient) }));

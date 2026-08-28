@@ -1,10 +1,10 @@
 // `speechify mcp install` — write the SpeechifyAI MCP server into local AI clients'
 // config files (Claude Code, Cursor, Claude Desktop, Windsurf, VS Code).
 //
-// Unlike an API-key CLI, our spawned server resolves auth from the stored console
-// session (~/.config/speechify/config.json) on its own, so we DON'T embed a
-// credential by default. `--embed-key` opts into baking $SPEECHIFY_API_KEY into
-// the client env for the API-key path.
+// The spawned server resolves auth from the stored API key (in the OS keychain, or
+// the encrypted-file fallback) on its own, so we DON'T embed a credential by
+// default. `--embed-key` opts into baking $SPEECHIFY_API_KEY into the client env
+// instead.
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -224,6 +224,5 @@ export async function runMcpInstall(opts: McpInstallOptions): Promise<void> {
     else logWarning(`${r.client}: ${r.path} couldn't be parsed safely; left unchanged — add the block manually.`);
   }
   logInfo("Restart the MCP client to load the Speechify server.");
-  if (!apiKey)
-    logInfo("Auth: the server uses your stored console session (or set SPEECHIFY_API_KEY in the client env).");
+  if (!apiKey) logInfo("Auth: the server uses your stored API key (or set SPEECHIFY_API_KEY in the client env).");
 }

@@ -7,3 +7,9 @@ dist/
 /speech.*
 /*.mp3
 /*.wav
+
+# Agent scratch space (worktrees)
+/.claude/
+/.opencode/
+/.overseer/
+/.agents/

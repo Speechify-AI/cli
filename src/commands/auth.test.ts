@@ -26,16 +26,9 @@ vi.mock("@vercel/detect-agent", () => ({
 const listVoices = vi.hoisted(() => vi.fn());
 vi.mock("../core/voices.js", () => ({ listVoices }));
 vi.mock("../core/client.js", () => ({ createClient: vi.fn(() => ({})) }));
-const listWorkspaces = vi.hoisted(() => vi.fn());
-vi.mock("../core/workspaces.js", () => ({ listWorkspaces }));
 
-import { resetIdTokenCache } from "../auth/session.js";
 import { readConfigFile, writeConfigFile } from "../configFile.js";
 import { registerAuthCommands } from "./auth.js";
-
-/** A display-only fake ID token whose payload carries the given claims. */
-const fakeIdToken = (claims: Record<string, unknown>): string =>
-  `header.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
 
 /** Capture stdout while `fn` runs (mockRestore-safe: reads from a sink array). */
 async function captureStdout(fn: () => Promise<unknown>): Promise<string> {
@@ -61,10 +54,7 @@ beforeEach(async () => {
   vi.stubEnv("SPEECHIFY_API_KEY", "");
   vi.stubEnv("SPEECHIFY_BASE_URL", "");
   vi.stubEnv("SPEECHIFY_API_VERSION", "");
-  vi.stubEnv("SPEECHIFY_FB_API_KEY", "");
   listVoices.mockReset();
-  listWorkspaces.mockReset();
-  resetIdTokenCache();
 });
 
 afterEach(async () => {
@@ -81,15 +71,13 @@ function buildProgram(): Command {
     .option("--agent-friendly")
     .option("--no-input")
     .option("--base-url <url>")
-    .option("--api-version <v>")
-    .option("--workspace <id>");
+    .option("--api-version <v>");
   registerAuthCommands(program);
   return program;
 }
 
 describe("login --api-key", () => {
-  it("validates the key and stores it, replacing an existing console session", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb", workspace_id: "ws_1" });
+  it("validates the key and stores it", async () => {
     listVoices.mockResolvedValue([]);
 
     await buildProgram().parseAsync(["node", "speechify", "login", "--api-key", "sk_live_123", "--json"]);
@@ -97,14 +85,10 @@ describe("login --api-key", () => {
     expect(listVoices).toHaveBeenCalledOnce(); // validated before storing
     const cfg = await readConfigFile();
     expect(cfg?.api_key).toBe("sk_live_123");
-    // Console session was replaced, not merged.
-    expect(cfg?.refresh_token).toBeUndefined();
-    expect(cfg?.workspace_id).toBeUndefined();
-    expect(cfg?.firebase_api_key).toBeUndefined();
   });
 
-  it("leaves the existing session intact when the key fails validation", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb", workspace_id: "ws_1" });
+  it("leaves an existing key intact when the new key fails validation", async () => {
+    await writeConfigFile({ api_key: "sk_existing" });
     listVoices.mockRejectedValue(new Error("401 unauthorized"));
 
     await expect(
@@ -112,51 +96,29 @@ describe("login --api-key", () => {
     ).rejects.toThrow();
 
     const cfg = await readConfigFile();
-    expect(cfg?.refresh_token).toBe("rt"); // untouched
-    expect(cfg?.api_key).toBeUndefined();
+    expect(cfg?.api_key).toBe("sk_existing"); // untouched
+  });
+
+  it("returns a needs-input spec (exit 2) when no key is given non-interactively", async () => {
+    await expect(
+      buildProgram().parseAsync(["node", "speechify", "login", "--no-input", "--json"]),
+    ).rejects.toMatchObject({ exitCode: 2 });
   });
 });
 
 describe("logout", () => {
   it("emits a structured payload to stdout in --json mode (via emit, not a json-only branch)", async () => {
-    await writeConfigFile({ refresh_token: "rt", firebase_api_key: "fb" });
+    await writeConfigFile({ api_key: "sk_stored" });
     const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechify", "logout", "--json"]));
     expect(JSON.parse(out)).toEqual({ status: "logged_out" });
   });
 });
 
 describe("whoami", () => {
-  it("shows the email and user id decoded from the cached ID token (no network)", async () => {
-    await writeConfigFile({
-      refresh_token: "rt",
-      firebase_api_key: "fb",
-      workspace_id: "ws_1",
-      id_token: fakeIdToken({ email: "shaun@example.com", user_id: "u_1" }),
-      id_token_expires_at: Date.now() + 30 * 60_000,
-    });
+  it("reports a stored API key (no network) with the source and masked key", async () => {
+    await writeConfigFile({ api_key: "sk_live_abcdef" });
     const out = await captureStdout(() => buildProgram().parseAsync(["node", "speechify", "whoami", "--json"]));
-    expect(JSON.parse(out)).toEqual({
-      mode: "console",
-      email: "shaun@example.com",
-      user_id: "u_1",
-      workspace_id: "ws_1",
-    });
-  });
-
-  it("--check verifies the console session against the API and reports the workspace count", async () => {
-    await writeConfigFile({
-      refresh_token: "rt",
-      firebase_api_key: "fb",
-      workspace_id: "ws_1",
-      id_token: fakeIdToken({ email: "shaun@example.com", user_id: "u_1" }),
-      id_token_expires_at: Date.now() + 30 * 60_000, // fresh → no token exchange needed
-    });
-    listWorkspaces.mockResolvedValue([{ id: "ws_1", name: "Main" }]);
-    const out = await captureStdout(() =>
-      buildProgram().parseAsync(["node", "speechify", "whoami", "--check", "--json"]),
-    );
-    expect(JSON.parse(out)).toMatchObject({ mode: "console", checked: true, workspace_count: 1 });
-    expect(listWorkspaces).toHaveBeenCalledOnce();
+    expect(JSON.parse(out)).toMatchObject({ source: "file" });
   });
 
   it("--check validates an env API key via the voices endpoint", async () => {
@@ -165,7 +127,7 @@ describe("whoami", () => {
     const out = await captureStdout(() =>
       buildProgram().parseAsync(["node", "speechify", "whoami", "--check", "--json"]),
     );
-    expect(JSON.parse(out)).toMatchObject({ mode: "api-key", source: "env", checked: true });
+    expect(JSON.parse(out)).toMatchObject({ source: "env", checked: true });
     expect(listVoices).toHaveBeenCalledOnce();
   });
 
