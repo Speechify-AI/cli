@@ -1,0 +1,6 @@
+# pnpm settings live here (pnpm 10+ no longer reads the "pnpm" field in package.json).
+# Dependency build scripts are blocked by default; esbuild needs its postinstall to
+# fetch/verify the platform binary tsup builds with. Without this, pnpm's dependency
+# check fails and `pnpm build` / `pnpm test` exit 1 (ERR_PNPM_IGNORED_BUILDS).
+allowBuilds:
+  esbuild: true

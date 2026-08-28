@@ -13,9 +13,23 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { writeStreamToFile } from "../audio/sink.js";
 import { type AuthInput, requireWorkspace, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
-import { AUDIO_FORMATS, AUDIO_MIME, DEFAULT_VOICE, SPEECH_MODELS, synthesize } from "../core/speech.js";
+import { resolveTimeoutMs } from "../core/fetchWithTimeout.js";
+import {
+  AUDIO_FORMATS,
+  AUDIO_MIME,
+  DEFAULT_STREAM_FORMAT,
+  DEFAULT_VOICE,
+  MAX_SPEECH_INPUT,
+  MAX_STREAM_INPUT,
+  SPEECH_MODELS,
+  STREAM_FORMATS,
+  streamSpeech,
+  synthesize,
+} from "../core/speech.js";
+import { readStreamChunks } from "../core/stream.js";
 import { listVoices } from "../core/voices.js";
 
 /** Public, unauthenticated docs MCP server hosted by Fern for docs.speechify.ai. */
@@ -147,6 +161,53 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
           {
             type: "text",
             text: `Synthesized ${result.audio.length} bytes (${result.format}). Billable characters: ${result.billableCharacters}.`,
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    "stream_text_to_speech",
+    {
+      description:
+        `Synthesize long-form speech (up to ${MAX_STREAM_INPUT} characters) and write it to outputPath as it is generated. ` +
+        `Reach for this instead of text_to_speech whenever the text exceeds ${MAX_SPEECH_INPUT} characters, or when the audio should stay out of the conversation. ` +
+        "Returns the path and byte count, never the audio itself. Requires a `speechifyai login` session or SPEECHIFY_API_KEY.",
+      inputSchema: {
+        input: z.string().describe("Plain text or SSML to synthesize"),
+        outputPath: z
+          .string()
+          .describe("File to write the audio to. Required: streamed audio is never returned inline."),
+        voiceId: z
+          .string()
+          .default(DEFAULT_VOICE)
+          .describe(`Voice id (see list_voices). Defaults to '${DEFAULT_VOICE}'.`),
+        model: z.enum(SPEECH_MODELS).optional().describe("Synthesis model"),
+        audioFormat: z
+          .enum(STREAM_FORMATS)
+          .default(DEFAULT_STREAM_FORMAT)
+          .describe("Output audio format (wav is unavailable on the streaming route)"),
+        language: z.string().optional().describe("Input language as BCP-47 (e.g. en-US)"),
+      },
+    },
+    async ({ input, outputPath, voiceId, model, audioFormat, language }) => {
+      const result = await streamSpeech(await ttsClient(), {
+        input,
+        voiceId,
+        model,
+        format: audioFormat,
+        language,
+      });
+      const bytes = await writeStreamToFile(
+        readStreamChunks(result.body, { stallTimeoutMs: resolveTimeoutMs() }),
+        outputPath,
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Wrote ${bytes} bytes of ${result.audio.codec} audio to ${outputPath}. The streaming route reports no billable character count.`,
           },
         ],
       };
