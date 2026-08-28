@@ -5,15 +5,16 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// SDK shape: client.audio.speech() / client.voices.list(). SpeechifyError is
-// pulled in transitively by core/errors.ts, so the mock must export it too.
-// list() resolves to a plain array here — `for await` in core/voices.ts adapts
-// sync iterables, so the paginated Page shape needs no mock mirror.
-const sdk = vi.hoisted(() => ({ speech: vi.fn(), list: vi.fn(), stream: vi.fn() }));
+// SDK shape: client.audio.speech() / client.audio.stream() / client.voices.list()
+// / client.voices.get(). SpeechifyError is pulled in transitively by
+// core/errors.ts, so the mock must export it too. list() resolves to a plain
+// array here — `for await` in core/voices.ts adapts sync iterables, so the
+// paginated Page shape needs no mock mirror.
+const sdk = vi.hoisted(() => ({ speech: vi.fn(), list: vi.fn(), get: vi.fn(), stream: vi.fn() }));
 vi.mock("@speechify/api", () => ({
   SpeechifyClient: class {
     audio = { speech: sdk.speech, stream: sdk.stream };
-    voices = { list: sdk.list };
+    voices = { list: sdk.list, get: sdk.get };
   },
   SpeechifyError: class SpeechifyError extends Error {},
 }));
@@ -69,6 +70,7 @@ function streamReturns(text: string, headers: Record<string, string> = {}): void
 beforeEach(() => {
   sdk.speech.mockReset();
   sdk.list.mockReset();
+  sdk.get.mockReset();
   sdk.stream.mockReset();
 });
 
@@ -76,7 +78,7 @@ describe("buildServer tool registration", () => {
   it("always registers every tool, regardless of auth state", async () => {
     const client = await connect();
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    expect(names).toEqual(["list_voices", "search_docs", "stream_text_to_speech", "text_to_speech"]);
+    expect(names).toEqual(["get_voice", "list_voices", "search_docs", "stream_text_to_speech", "text_to_speech"]);
     await client.close();
   });
 
@@ -121,6 +123,47 @@ describe("list_voices tool", () => {
         tags: [],
       },
     ]);
+    await client.close();
+  });
+});
+
+describe("get_voice tool", () => {
+  it("returns the single voice mapped from the v3 SDK", async () => {
+    sdk.get.mockResolvedValue({
+      id: "george",
+      display_name: "George",
+      gender: "male",
+      locale: "en-US",
+      type: "shared",
+      models: [{ name: "simba-english", languages: [{ locale: "en-US", preview_audio: "https://cdn/en.mp3" }] }],
+      preview_audio: "https://cdn/en.mp3",
+      avatar_image: "",
+      tags: [],
+    });
+    const client = await connect();
+    const res = await client.callTool({ name: "get_voice", arguments: { voiceId: "george" } });
+
+    expect(sdk.get).toHaveBeenCalledWith({ voice_id: "george" });
+    expect(JSON.parse(firstText(res))).toEqual({
+      id: "george",
+      displayName: "George",
+      gender: "male",
+      locale: "en-US",
+      type: "shared",
+      models: [{ name: "simba-english", languages: [{ locale: "en-US", previewAudio: "https://cdn/en.mp3" }] }],
+      tags: [],
+      previewAudio: "https://cdn/en.mp3",
+    });
+    await client.close();
+  });
+
+  it("rejects an empty voice id as a tool error without calling the API", async () => {
+    const client = await connect();
+    const res = await client.callTool({ name: "get_voice", arguments: { voiceId: "  " } });
+
+    expect(res.isError).toBe(true);
+    expect(firstText(res)).toContain("voices list");
+    expect(sdk.get).not.toHaveBeenCalled();
     await client.close();
   });
 });
