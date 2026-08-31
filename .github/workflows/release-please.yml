@@ -1,0 +1,204 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable corepack
+        run: corepack enable
+      # `pnpm build` is tsup, which emits but does not type-check, so the
+      # type-check runs here too — the SDK's `pnpm build` is `tsc` and catches
+      # this for free; this keeps the compile job an equivalent gate.
+      - name: Compile
+        run: pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Enable corepack
+        run: corepack enable
+      - name: Test
+        run: pnpm install --frozen-lockfile && pnpm test
+
+  release-please:
+    needs: [compile, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      - name: Set up node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - name: Enable corepack
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # release-please (release-type "node") already bumped package.json on the
+      # release commit, and tsup bakes that version into dist/bin.js at build
+      # time (__CLI_VERSION__), so nothing needs stamping here — package.json is
+      # the single source of truth. Build BEFORE asserting so the assertion can
+      # check dist/, which is what npm actually ships.
+      - name: Build
+        run: pnpm build
+      # Every version-bearing property must agree with the release tag before
+      # anything reaches npm: package.json, the built artifact's own --version
+      # output, and the repository URL casing (npm's provenance check rejects a
+      # case-inexact URL with HTTP 422).
+      - name: Assert versions match release tag
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/assert-release-versions.cjs" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const { execFileSync } = require("node:child_process");
+
+          const fail = (message) => {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          };
+
+          // include-v-in-tag is false, so the tag is bare semver. A leading "v" is
+          // tolerated so flipping that setting later cannot fail a valid release, and
+          // a prerelease/build suffix (0.1.0-alpha.1) is compared verbatim.
+          const BARE_SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+
+          const rawTag = (process.env.TAG_NAME || "").trim();
+          if (!rawTag) {
+            fail("TAG_NAME is empty — refusing to publish an unidentified release");
+          }
+          const tag = rawTag.startsWith("v") ? rawTag.slice(1) : rawTag;
+          if (!BARE_SEMVER.test(tag)) {
+            fail(`tag "${rawTag}" is not bare semver — refusing to publish`);
+          }
+
+          const readJsonOrFail = (relativePath, hint) => {
+            const absolutePath = path.join(process.cwd(), relativePath);
+            if (!fs.existsSync(absolutePath)) {
+              fail(`${relativePath} does not exist — ${hint}`);
+            }
+            try {
+              return JSON.parse(fs.readFileSync(absolutePath, "utf8"));
+            } catch (error) {
+              return fail(`cannot parse ${relativePath}: ${error.message}`);
+            }
+          };
+
+          const packageJson = readJsonOrFail("package.json", "the checkout is incomplete");
+
+          // The built binary carries the version tsup baked in (__CLI_VERSION__).
+          // `--version` is the artifact actually shipped answering for itself — the
+          // strongest check that dist/ isn't stale from an earlier build.
+          if (!fs.existsSync(path.join(process.cwd(), "dist/bin.js"))) {
+            fail("dist/bin.js does not exist — the Build step did not produce it");
+          }
+          let binaryVersion;
+          try {
+            binaryVersion = execFileSync(process.execPath, ["dist/bin.js", "--version"], {
+              encoding: "utf8",
+            }).trim();
+          } catch (error) {
+            return fail(`\`node dist/bin.js --version\` failed: ${error.message}`);
+          }
+
+          const observedVersions = [
+            ["package.json version", packageJson.version],
+            ["dist/bin.js --version", binaryVersion],
+          ];
+
+          // npm resolves repository.url to a repo slug for provenance and rejects a
+          // case-inexact one with HTTP 422, so compare case-sensitively.
+          const expectedRepositoryUrl = `https://github.com/${process.env.EXPECTED_REPOSITORY}`;
+          const declaredRepositoryUrl = String(packageJson.repository?.url)
+            .replace(/^git\+/, "")
+            .replace(/\.git$/, "");
+
+          console.log(`release tag: ${rawTag} (normalised: ${tag})`);
+          for (const [label, version] of observedVersions) {
+            console.log(`  [${version === tag ? "ok" : "MISMATCH"}] ${label}: ${version}`);
+          }
+          console.log(`package.json repository.url:  ${packageJson.repository?.url}`);
+          console.log(`expected repository.url:      ${expectedRepositoryUrl}`);
+
+          const failures = observedVersions
+            .filter(([, version]) => version !== tag)
+            .map(([label, version]) => `${label} is "${version}", expected "${tag}"`);
+
+          if (declaredRepositoryUrl !== expectedRepositoryUrl) {
+            failures.push(
+              `package.json repository.url resolves to "${declaredRepositoryUrl}", expected ` +
+                `"${expectedRepositoryUrl}" — npm publish --provenance rejects a ` +
+                `case-inexact URL with HTTP 422`,
+            );
+          }
+
+          if (failures.length > 0) {
+            console.error("\nRefusing to publish:");
+            for (const failure of failures) {
+              console.error(`  - ${failure}`);
+            }
+            process.exit(1);
+          }
+
+          console.log(`\nAll version-bearing properties agree with ${tag}.`);
+          NODE
+          node "${RUNNER_TEMP}/assert-release-versions.cjs"
+      - name: Publish to npm
+        env:
+          TAG_NAME: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          if [[ "$TAG_NAME" == *alpha* ]]; then
+            npm publish --provenance --access public --tag alpha
+          elif [[ "$TAG_NAME" == *beta* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
