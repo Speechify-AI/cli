@@ -5,8 +5,9 @@
 // the encrypted-file fallback) on its own, so we DON'T embed a credential by
 // default. `--embed-key` opts into baking $SPEECHIFY_API_KEY into the client env
 // instead.
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CliError, ExitCode } from "../core/errors.js";
@@ -132,6 +133,33 @@ export function mergeConfig(
 
 export type WriteStatus = "installed" | "skipped-unparsable";
 
+/** True when the entry carries an embedded credential (so the file must be private). */
+function entryHasSecret(entry: Record<string, unknown>): boolean {
+  const env = entry.env as Record<string, unknown> | undefined;
+  return Boolean(env && typeof env.SPEECHIFY_API_KEY === "string" && env.SPEECHIFY_API_KEY.length > 0);
+}
+
+/**
+ * Write `content` to `destination` atomically: a sibling temp file, fsync-free
+ * rename into place. A crash mid-write can never leave a half-written (corrupt)
+ * config — the old file stays until the rename swaps it. When `mode` is given the
+ * temp file is created with it, so a config carrying a plaintext key is never
+ * momentarily world-readable.
+ */
+async function writeFileAtomic(destination: string, content: string, mode?: number): Promise<void> {
+  const temporary = path.join(
+    path.dirname(destination),
+    `.${path.basename(destination)}.${randomBytes(6).toString("hex")}.tmp`,
+  );
+  try {
+    await writeFile(temporary, content, mode !== undefined ? { mode } : undefined);
+    await rename(temporary, destination);
+  } catch (err) {
+    await rm(temporary, { force: true });
+    throw err;
+  }
+}
+
 export async function writeClientConfig(client: McpClient, entry: Record<string, unknown>): Promise<WriteStatus> {
   let config: Record<string, unknown> = {};
   if (existsSync(client.configPath)) {
@@ -144,7 +172,11 @@ export async function writeClientConfig(client: McpClient, entry: Record<string,
   }
   const merged = mergeConfig(config, client.serversKey, entry);
   await mkdir(path.dirname(client.configPath), { recursive: true });
-  await writeFile(client.configPath, `${JSON.stringify(merged, null, 2)}\n`);
+  // A config with an embedded key is written 0600 so the plaintext secret isn't
+  // left readable by other users. Without a key we don't tighten an existing
+  // shared config's permissions.
+  const mode = entryHasSecret(entry) ? 0o600 : undefined;
+  await writeFileAtomic(client.configPath, `${JSON.stringify(merged, null, 2)}\n`, mode);
   return "installed";
 }
 
@@ -170,6 +202,11 @@ export async function runMcpInstall(opts: McpInstallOptions): Promise<void> {
   const apiKey = opts.embedKey ? (clean(opts.apiKey) ?? clean(process.env.SPEECHIFY_API_KEY)) : undefined;
   if (opts.embedKey && !apiKey) {
     logWarning("--embed-key set but no API key found (--api-key / $SPEECHIFY_API_KEY); writing config without one.");
+  }
+  if (apiKey && !opts.print) {
+    logWarning(
+      "--embed-key writes your API key in PLAINTEXT into each client config (files set to 0600). Prefer omitting it and relying on the OS keychain (`speechify login`).",
+    );
   }
 
   // --print: show the canonical config block, write nothing.

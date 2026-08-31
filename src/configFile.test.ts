@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // In-memory, controllable stand-in for the OS keychain. `available: false` makes
 // every Entry method throw, exercising the encrypted-file fallback (the default
 // path on headless/CI hosts). We never touch the real keychain in tests.
-const keychain = vi.hoisted(() => ({ available: false, store: new Map<string, string>() }));
+const keychain = vi.hoisted(() => ({ available: false, failDelete: false, store: new Map<string, string>() }));
 vi.mock("@napi-rs/keyring", () => ({
   Entry: class {
     constructor(
@@ -26,6 +26,9 @@ vi.mock("@napi-rs/keyring", () => ({
     }
     deletePassword(): boolean {
       if (!keychain.available) throw new Error("no keychain backend");
+      // Simulate a denied OS prompt / locked store: the delete fails but the
+      // credential stays present and readable.
+      if (keychain.failDelete) throw new Error("User denied keychain access");
       return keychain.store.delete(this.key());
     }
   },
@@ -47,6 +50,7 @@ beforeEach(async () => {
   vi.stubEnv("XDG_CONFIG_HOME", dir);
   vi.stubEnv("APPDATA", dir);
   keychain.available = false;
+  keychain.failDelete = false;
   keychain.store.clear();
 });
 
@@ -110,5 +114,15 @@ describe("keychain backend (when available)", () => {
 
     expect(await clearConfigFile()).toBe(true);
     expect(await readConfigFile()).toBeUndefined();
+  });
+
+  it("surfaces a failed delete when the key is still present (logout must not lie)", async () => {
+    keychain.available = true;
+    await writeConfigFile({ api_key: "sk_k" });
+    keychain.failDelete = true; // denied prompt / locked store: delete throws, key stays
+
+    await expect(clearConfigFile()).rejects.toMatchObject({ code: "keychain_delete_failed", exitCode: 78 });
+    // The credential really is still there — the error told the truth.
+    expect(await readConfigFile()).toEqual({ api_key: "sk_k" });
   });
 });

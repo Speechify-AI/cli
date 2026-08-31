@@ -22,6 +22,15 @@ export interface GlobalOptions {
  */
 export function intArg(flag: string, bounds: { min?: number; max?: number } = {}): (value: string) => number {
   return (value: string): number => {
+    // Require plain decimal digits (with an optional sign) so `Number`'s liberal
+    // parsing can't slip through hex (0x1f90), scientific (8e3), or space-padded
+    // values — all of which coerce to a valid integer but aren't what the user typed.
+    if (!/^[+-]?\d+$/.test(value)) {
+      throw new CliError(`${flag} must be a whole number (got "${value}").`, {
+        exitCode: ExitCode.DATA_ERR,
+        code: "invalid_argument",
+      });
+    }
     const n = Number(value);
     if (!Number.isInteger(n)) {
       throw new CliError(`${flag} must be a whole number (got "${value}").`, {

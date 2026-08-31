@@ -32,10 +32,20 @@ const response = {
   chunks: ["audio-"] as string[],
   headers: {} as Record<string, string>,
   requests: [] as Speechify.StreamAudioRequest[],
+  speechRequests: [] as unknown[],
 };
 
 const fakeClient = {
   audio: {
+    // Non-stream POST /v1/audio/speech — one JSON response of base64 audio.
+    speech: async (request: unknown) => {
+      response.speechRequests.push(request);
+      return {
+        audio_data: Buffer.from(response.chunks.join("")).toString("base64"),
+        audio_format: "mp3",
+        billable_characters_count: 5,
+      };
+    },
     stream: (request: Speechify.StreamAudioRequest) => ({
       withRawResponse: async () => {
         response.requests.push(request);
@@ -81,6 +91,7 @@ beforeEach(async () => {
   response.chunks = ["audio-", "bytes"];
   response.headers = { "content-type": "audio/mpeg", "speechify-request-id": "req_1" };
   response.requests = [];
+  response.speechRequests = [];
   vi.mocked(resolveTextInput).mockClear();
   vi.mocked(resolveTextInput).mockResolvedValue("hello");
 
@@ -224,10 +235,6 @@ describe("say --stream flag validation", () => {
     expect(response.requests).toHaveLength(0);
   });
 
-  it("rejects --force without --stream, where it would protect nothing", async () => {
-    await expect(run("--force")).rejects.toMatchObject({ code: "invalid_argument", exitCode: 65 });
-  });
-
   it("rejects the combination before reading a single byte of input", async () => {
     await expect(run("--output-format", "pcm_16000")).rejects.toThrow();
     expect(vi.mocked(resolveTextInput)).not.toHaveBeenCalled();
@@ -285,5 +292,45 @@ describe("say --stream flag validation", () => {
     expect(stdout).toBe("audio-bytes");
     expect(stderr).toContain("Streamed 11 B (mp3)");
     expect(await readdir(directory)).toEqual([]);
+  });
+});
+
+// The default (non-stream) route must match the streaming route's file-safety and
+// stdout guards — the review found it silently overwrote and sprayed a TTY.
+describe("say (non-stream) output safety", () => {
+  it("writes the default speech.mp3 when nothing is there", async () => {
+    await run();
+    expect(await readFile(join(directory, "speech.mp3"), "utf8")).toBe("audio-bytes");
+  });
+
+  it("refuses to overwrite an existing default speech.mp3 without --force", async () => {
+    await writeFile(join(directory, "speech.mp3"), "previous take");
+    await expect(run()).rejects.toMatchObject({ code: "output_exists", exitCode: 65 });
+    // Untouched.
+    expect(await readFile(join(directory, "speech.mp3"), "utf8")).toBe("previous take");
+  });
+
+  it("overwrites the default file when --force is passed (no longer rejected)", async () => {
+    await writeFile(join(directory, "speech.mp3"), "previous take");
+    await run("--force");
+    expect(await readFile(join(directory, "speech.mp3"), "utf8")).toBe("audio-bytes");
+  });
+
+  it("replaces a file the user named with --out without asking", async () => {
+    await writeFile(join(directory, "clip.mp3"), "previous take");
+    await run("--out", "clip.mp3");
+    expect(await readFile(join(directory, "clip.mp3"), "utf8")).toBe("audio-bytes");
+  });
+
+  it("refuses to spray raw audio over a terminal on the default route too", async () => {
+    const stdoutRef = process.stdout as { isTTY?: boolean };
+    const original = stdoutRef.isTTY;
+    stdoutRef.isTTY = true;
+    try {
+      await expect(run("--out", "-")).rejects.toMatchObject({ code: "binary_to_tty", exitCode: 65 });
+    } finally {
+      stdoutRef.isTTY = original;
+    }
+    expect(response.speechRequests).toHaveLength(0);
   });
 });

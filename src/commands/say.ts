@@ -104,17 +104,14 @@ function assertSayFlags(opts: SayOptions, formatCameFromCli: boolean): void {
     });
   }
 
+  // Never spray raw audio onto a terminal — on either route. (This once guarded
+  // only the --stream path, letting the default `say … --out -` dump binary to a
+  // TTY.) Redirecting/piping stdout is fine; an interactive TTY is refused.
+  if (toStdout) assertBinaryStdout();
+
   if (!opts.stream) {
     if (opts.outputFormat) {
       throw new CliError("--output-format applies to --stream only. Add --stream, or use --format for the file type.", {
-        exitCode: ExitCode.DATA_ERR,
-        code: "invalid_argument",
-      });
-    }
-    // Without --stream nothing is protected from being overwritten, so --force
-    // would be an inert flag that reads as if it did something.
-    if (opts.force) {
-      throw new CliError("--force applies to --stream only; without it `say` always replaces the output file.", {
         exitCode: ExitCode.DATA_ERR,
         code: "invalid_argument",
       });
@@ -124,7 +121,6 @@ function assertSayFlags(opts: SayOptions, formatCameFromCli: boolean): void {
 
   assertStreamFormatChoice(formatCameFromCli ? opts.format : undefined, opts.outputFormat);
   if (!opts.outputFormat) assertStreamableFormat(opts.format);
-  if (toStdout) assertBinaryStdout();
 }
 
 export function registerSayCommand(program: Command): void {
@@ -152,7 +148,7 @@ export function registerSayCommand(program: Command): void {
         "exact codec/sample rate/bitrate, e.g. pcm_16000 or mp3_24000_64 (--stream only; replaces --format)",
       ).choices([...STREAM_OUTPUT_FORMATS]),
     )
-    .option("--force", "overwrite the default output file if it already exists (--stream only)")
+    .option("--force", "overwrite the default output file (speech.<format>) if it already exists")
     .addHelpText(
       "after",
       [
@@ -215,6 +211,9 @@ export function registerSayCommand(program: Command): void {
       }
 
       const outPath = opts.out ?? `speech.${result.format}`;
+      // The default path is ours, not the user's: never silently overwrite a file
+      // they didn't name. An explicit --out is theirs to replace; --force overrides.
+      if (!opts.out && !opts.force) await assertPathAvailable(outPath);
       await writeFile(outPath, result.audio);
 
       if (opts.play) {

@@ -77,6 +77,27 @@ describe("resolveAuth", () => {
     expect(auth).toMatchObject({ baseUrl: "https://example.test", apiVersion: "2026-01-01" });
   });
 
+  it("does NOT let an ad-hoc flag key inherit the stored base_url/api_version", async () => {
+    // A staging host was configured for the stored key. Passing a different key on
+    // the fly must not silently ship its Bearer to that host.
+    await writeConfigFile({ api_key: "sk_stored", base_url: "https://staging.test", api_version: "2026-01-01" });
+    const auth = await resolveAuth({ apiKey: "sk_flag" });
+    expect(auth).toMatchObject({ bearer: "sk_flag", baseUrl: DEFAULT_BASE_URL, keySource: "flag" });
+    expect(auth.apiVersion).toBeUndefined();
+  });
+
+  it("does NOT let an env key inherit the stored base_url either", async () => {
+    await writeConfigFile({ api_key: "sk_stored", base_url: "https://staging.test" });
+    vi.stubEnv("SPEECHIFY_API_KEY", "sk_env");
+    const auth = await resolveAuth();
+    expect(auth).toMatchObject({ bearer: "sk_env", baseUrl: DEFAULT_BASE_URL, keySource: "env" });
+  });
+
+  it("still honors an explicit --base-url alongside a flag key", async () => {
+    const auth = await resolveAuth({ apiKey: "sk_flag", baseUrl: "https://my.proxy" });
+    expect(auth).toMatchObject({ bearer: "sk_flag", baseUrl: "https://my.proxy" });
+  });
+
   it("throws a CliError when nothing is configured", async () => {
     await expect(resolveAuth()).rejects.toBeInstanceOf(CliError);
   });

@@ -8,7 +8,7 @@ import type { AuthContext } from "../auth/session.js";
 import { resolveAuth } from "../auth/session.js";
 import { CliError, ExitCode, exitCodeForStatus } from "../core/errors.js";
 import { fetchWithTimeout } from "../core/fetchWithTimeout.js";
-import { readStdin } from "../io.js";
+import { readStdinBytes } from "../io.js";
 import type { GlobalOptions } from "../options.js";
 import { logWarning } from "../output.js";
 
@@ -25,14 +25,34 @@ export interface ApiRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body?: string;
+  /** A string body for text/JSON, or raw bytes for a binary body (`-d -`, `@file`). */
+  body?: string | Buffer;
 }
 
 function buildUrl(base: string, endpoint: string, query: string[] = []): string {
-  // A full URL is used as-is; otherwise the path is resolved against the API base.
-  const url = /^https?:\/\//i.test(endpoint)
-    ? new URL(endpoint)
-    : new URL((endpoint.startsWith("/") ? "" : "/") + endpoint, `${base.replace(/\/+$/, "")}/`);
+  let url: URL;
+  if (/^https?:\/\//i.test(endpoint)) {
+    // A full http(s) URL is an explicit, deliberate target — used as-is.
+    url = new URL(endpoint);
+  } else {
+    // Resolve as a path relative to the base, preserving ANY path the base carries
+    // (e.g. `--base-url https://host/api` keeps `/api`). Strip leading slashes so
+    // the endpoint appends to the base path instead of resetting to the origin —
+    // this also neutralizes a protocol-relative `//evil.com/x`, which would
+    // otherwise re-target the host and leak the Bearer off-origin.
+    const baseUrl = new URL(base.endsWith("/") ? base : `${base}/`);
+    // Strip leading slashes AND backslashes (the URL parser treats `\` as `/` for
+    // http(s)) so the endpoint appends to the base path instead of resetting to the
+    // origin or going protocol-relative. The origin check below is the backstop for
+    // anything exotic (e.g. a control-char prefix that re-enables `//host`).
+    url = new URL(endpoint.replace(/^[/\\]+/, ""), baseUrl);
+    if (url.origin !== baseUrl.origin) {
+      throw new CliError(
+        `Endpoint "${endpoint}" resolves off the API host (${baseUrl.origin}). Pass a path, or a full https:// URL to target another host deliberately.`,
+        { exitCode: ExitCode.DATA_ERR, code: "endpoint_off_origin" },
+      );
+    }
+  }
   for (const q of query) {
     const i = q.indexOf("=");
     if (i === -1) throw new CliError(`Invalid --query "${q}" (expected key=value).`, { exitCode: ExitCode.DATA_ERR });
@@ -41,20 +61,54 @@ function buildUrl(base: string, endpoint: string, query: string[] = []): string 
   return url.toString();
 }
 
-async function resolveBody(opts: ApiOptions): Promise<{ body?: string; contentType?: string }> {
+/**
+ * Coerce a --field value to a typed JSON scalar so numeric/boolean/null API
+ * parameters aren't sent as strings (which some endpoints reject with 422). Only
+ * the unambiguous literals `true`/`false`/`null` and plain decimal numbers are
+ * converted; everything else stays a string. Use --data for a body that needs the
+ * literal string "true"/"123".
+ */
+function coerceFieldValue(value: string): unknown {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value === "null") return null;
+  // Strict decimal number: no hex, no leading +, no surrounding space — so an id
+  // like "007" or "1e" stays a string rather than silently becoming a number.
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)) return Number(value);
+  return value;
+}
+
+/** JSON content-type sniff on raw bytes: first non-whitespace byte is `{` or `[`. */
+function sniffJsonContentType(body: Buffer): string | undefined {
+  for (const byte of body) {
+    if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue;
+    return byte === 0x7b || byte === 0x5b ? "application/json" : undefined;
+  }
+  return undefined;
+}
+
+async function resolveBody(opts: ApiOptions): Promise<{ body?: string | Buffer; contentType?: string }> {
   if (opts.field?.length) {
-    const obj: Record<string, string> = {};
+    const obj: Record<string, unknown> = {};
     for (const f of opts.field) {
       const i = f.indexOf("=");
       if (i === -1) throw new CliError(`Invalid --field "${f}" (expected key=value).`, { exitCode: ExitCode.DATA_ERR });
-      obj[f.slice(0, i)] = f.slice(i + 1);
+      obj[f.slice(0, i)] = coerceFieldValue(f.slice(i + 1));
     }
     return { body: JSON.stringify(obj), contentType: "application/json" };
   }
   if (opts.data != null) {
-    let raw = opts.data;
-    if (raw === "-") raw = await readStdin();
-    else if (raw.startsWith("@")) raw = await readFile(raw.slice(1), "utf8");
+    // `-` (stdin) and `@file` are read as raw bytes so a binary body (audio, etc.)
+    // is sent verbatim rather than mangled through a UTF-8 round-trip.
+    if (opts.data === "-") {
+      const bytes = await readStdinBytes();
+      return { body: bytes, contentType: sniffJsonContentType(bytes) };
+    }
+    if (opts.data.startsWith("@")) {
+      const bytes = await readFile(opts.data.slice(1));
+      return { body: bytes, contentType: sniffJsonContentType(bytes) };
+    }
+    const raw = opts.data;
     const trimmed = raw.trimStart();
     const isJson = trimmed.startsWith("{") || trimmed.startsWith("[");
     return { body: raw, contentType: isJson ? "application/json" : undefined };
@@ -88,7 +142,10 @@ export function registerApiCommand(program: Command): void {
     .command("api <endpoint>")
     .description("Authenticated raw request to any API endpoint (gh-api style).")
     .option("-X, --method <method>", "HTTP method (default GET, or POST when a body is present)")
-    .option("-f, --field <key=value...>", "body field key=value; repeatable, builds a JSON body")
+    .option(
+      "-f, --field <key=value...>",
+      "body field key=value; repeatable, builds a JSON body (true/false/null and numbers become typed; use --data for literal strings)",
+    )
     .option("-d, --data <data>", "raw request body; @file reads a file, - reads stdin")
     .option("-q, --query <key=value...>", "query parameter key=value; repeatable")
     .option("-H, --header <header...>", "extra header 'Key: Value'; repeatable")

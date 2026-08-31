@@ -25,7 +25,13 @@ function candidates(): Player[] {
     case "win32":
       return [
         { cmd: "ffplay", args: (f) => ["-nodisp", "-autoexit", "-loglevel", "quiet", f] },
-        { cmd: "powershell", args: (f) => ["-c", `(New-Object Media.SoundPlayer '${f}').PlaySync();`] },
+        {
+          cmd: "powershell",
+          // Double any single quote so a path can't break out of the literal string
+          // and inject PowerShell (the '' escape is how single-quoted strings quote
+          // a quote). The whole path stays a single-quoted literal, never code.
+          args: (f) => ["-c", `(New-Object Media.SoundPlayer '${f.replace(/'/g, "''")}').PlaySync();`],
+        },
       ];
     default:
       return [

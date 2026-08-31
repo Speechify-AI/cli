@@ -111,14 +111,23 @@ server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechif
 directly. Tools:
 
 - **`search_docs`** — search the public Speechify docs. No auth required.
-- **`list_voices`** — list account voices. *(requires an API key)*
-- **`text_to_speech`** — synthesize audio, returned inline or written to a path.
-  *(requires an API key)*
+- **`list_voices`** / **`get_voice`** — list account voices, or fetch one by id. *(requires an API key)*
+- **`text_to_speech`** — synthesize audio, returned inline or written to a path. *(requires an API key)*
+- **`stream_text_to_speech`** — synthesize long-form audio straight to a file. *(requires an API key)*
+
+The TTS tools that write files confine `outputPath` to a relative path **inside
+the server's working directory** and never overwrite an existing file — a path
+that escapes the directory (absolute, `../…`) or collides with a file is refused.
 
 ```bash
 speechify mcp --accept-alpha                    # serve over stdio (the usual MCP transport)
 speechify mcp --accept-alpha --http --port 3000 # serve streamable HTTP at POST /mcp instead
 ```
+
+The HTTP transport binds **`127.0.0.1` only** by default: the endpoint is
+unauthenticated and uses your API key on every call, so it must not be reachable
+off-box. `--host <interface>` can bind a wider interface, but only put your own
+authentication (a reverse proxy, network policy) in front of it first.
 
 All tools are always registered, so they stay discoverable to agents regardless
 of auth state. Auth is resolved **per tool call**, so a server started before
@@ -139,9 +148,10 @@ speechify mcp install --accept-alpha --client vscode --embed-key # bake $SPEECHI
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
 By default no credential is embedded — the spawned server reads your stored API
-key. Use `--embed-key` to bake `$SPEECHIFY_API_KEY` into the entry instead. An
-existing config that can't be parsed safely (e.g. JSONC with comments) is left
-untouched.
+key. `--embed-key` bakes `$SPEECHIFY_API_KEY` into the entry instead, writing the
+key **in plaintext** into the client's config (the file is set to `0600`); prefer
+the stored keychain credential unless a client can't reach it. An existing config
+that can't be parsed safely (e.g. JSONC with comments) is left untouched.
 
 To wire it up manually instead, the stdio entry looks like this (once the CLI is
 on your `PATH`):

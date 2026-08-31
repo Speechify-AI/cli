@@ -169,7 +169,9 @@ describe("get_voice tool", () => {
 });
 
 describe("text_to_speech tool", () => {
-  const outPath = path.join(os.tmpdir(), `speechify-tts-${process.pid}-${Date.now()}.mp3`);
+  // outputPath is caller/model-controlled, so the server confines it to a relative
+  // path inside the working directory — an absolute tmpdir path is refused.
+  const outPath = `speechify-tts-${process.pid}.mp3`;
   afterEach(() => rm(outPath, { force: true }));
 
   it("writes a file when outputPath is given", async () => {
@@ -185,6 +187,26 @@ describe("text_to_speech tool", () => {
     });
     expect(firstText(res)).toContain(outPath);
     expect(await readFile(outPath, "utf8")).toBe("AUDIOBYTES");
+    await client.close();
+  });
+
+  it("refuses an outputPath that escapes the working directory", async () => {
+    sdk.speech.mockResolvedValue({
+      audio_data: Buffer.from("X").toString("base64"),
+      audio_format: "mp3",
+      billable_characters_count: 1,
+    });
+    const client = await connect();
+    for (const escaping of [path.join(os.tmpdir(), "pwn.mp3"), "../pwn.mp3", "/etc/pwned"]) {
+      const res = await client.callTool({
+        name: "text_to_speech",
+        arguments: { input: "hi", outputPath: escaping },
+      });
+      expect(res.isError).toBe(true);
+      expect(firstText(res)).toMatch(/working directory|resolves outside/i);
+    }
+    // Never reached the API — a rejected path spends nothing.
+    expect(sdk.speech).not.toHaveBeenCalled();
     await client.close();
   });
 
@@ -206,7 +228,7 @@ describe("text_to_speech tool", () => {
 });
 
 describe("stream_text_to_speech tool", () => {
-  const outPath = path.join(os.tmpdir(), `speechify-stream-${process.pid}-${Date.now()}.mp3`);
+  const outPath = `speechify-stream-${process.pid}.mp3`;
   afterEach(() => rm(outPath, { force: true }));
 
   it("writes the audio to the caller's path and returns the path, never the bytes", async () => {
