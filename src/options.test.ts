@@ -28,6 +28,18 @@ describe("intArg", () => {
     expect(() => intArg("--limit")("5.5")).toThrow(CliError);
   });
 
+  it("rejects values that Number() would silently accept (hex, scientific, padded)", () => {
+    // Each of these coerces to a valid integer via Number(), but none is what the
+    // user typed — reject them rather than send a surprising value on the wire.
+    for (const bad of ["0x1f90", "8e3", " 80 ", "80\n", "1_000", "0b10", "+"]) {
+      expect(() => intArg("--port", { min: 1, max: 65535 })(bad)).toThrow(CliError);
+    }
+  });
+
+  it("accepts a plain signed integer", () => {
+    expect(intArg("--limit")("+5")).toBe(5);
+  });
+
   it("enforces the lower bound", () => {
     expect(() => intArg("--limit", { min: 1, max: 200 })("0")).toThrow(/at least 1/);
   });

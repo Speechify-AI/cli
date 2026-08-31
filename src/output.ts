@@ -104,9 +104,28 @@ export function maskKey(key: string): string {
   return `${key.slice(0, PREFIX)}…${key.slice(-SUFFIX)}`;
 }
 
+/**
+ * Neutralize control characters in a table cell. Voice display names and tags come
+ * from the API (untrusted), so a value carrying a newline, tab, or an ESC-based
+ * ANSI sequence would otherwise break column alignment or inject terminal codes
+ * into the operator's screen. Every control byte (incl. ESC 0x1b, which is what
+ * makes ANSI escapes work) collapses to a space; the surviving printable bytes are
+ * inert on their own.
+ */
+function sanitizeCell(value: string): string {
+  let out = "";
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    out += code < 0x20 || code === 0x7f ? " " : ch;
+  }
+  return out;
+}
+
 export function renderTable(headers: string[], rows: string[][]): string {
-  const widths = headers.map((header, i) => {
-    const cellLengths = rows.map((row) => (row[i] ?? "").length);
+  const safeHeaders = headers.map(sanitizeCell);
+  const safeRows = rows.map((row) => row.map((cell) => sanitizeCell(cell ?? "")));
+  const widths = safeHeaders.map((header, i) => {
+    const cellLengths = safeRows.map((row) => (row[i] ?? "").length);
     return Math.max(header.length, ...cellLengths, 0);
   });
   // trimEnd so the last column never leaves trailing whitespace on a row.
@@ -116,5 +135,5 @@ export function renderTable(headers: string[], rows: string[][]): string {
       .join("  ")
       .trimEnd();
   const divider = widths.map((width) => "-".repeat(width));
-  return [line(headers), line(divider), ...rows.map(line)].join("\n");
+  return [line(safeHeaders), line(divider), ...safeRows.map(line)].join("\n");
 }

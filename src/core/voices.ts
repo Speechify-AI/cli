@@ -1,10 +1,16 @@
 // Shared voice-catalog service, backing `voices list` and `voices get`.
 //
-// The installed @speechify/api (v3) was regenerated against the paginated
-// envelope: GET /v1/voices now returns a Page (async iterable) instead of a
-// bare array, so we `for await` over it and follow pages until exhaustion.
+// The installed @speechify/api (v4) exposes GET /v1/voices as a paginated Page
+// (async iterable) instead of a bare array, so we `for await` over it and follow
+// pages until exhaustion.
 import type { Speechify, SpeechifyClient } from "@speechify/api";
 import { CliError, ExitCode, normalizeError } from "./errors.js";
+
+// Safety ceiling on how many voices we accumulate from the paginated catalog, so a
+// pathological or misbehaving server that never stops paging can't spin forever /
+// exhaust memory. Real catalogs are a few hundred voices; this never trips in
+// practice.
+const MAX_VOICES = 10_000;
 
 export interface VoiceSummary {
   id: string;
@@ -26,9 +32,13 @@ export async function listVoices(client: SpeechifyClient): Promise<VoiceSummary[
       gender: voice.gender,
       locale: voice.locale,
       type: voice.type,
-      models: voice.models.map((model) => model.name),
+      // Tolerant reader: mirror getVoice and degrade a missing `models` array to
+      // empty rather than throwing on `.map` (the spec marks it required, but a
+      // server that omits it must not crash the whole listing).
+      models: (voice.models ?? []).map((model) => model.name),
       tags: voice.tags ?? [],
     });
+    if (summaries.length >= MAX_VOICES) break;
   }
   return summaries;
 }

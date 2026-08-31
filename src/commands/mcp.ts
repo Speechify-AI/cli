@@ -7,13 +7,14 @@
 // spawned-server config it writes (see cliInvocation in mcp-install.ts).
 import { type Command, Option } from "commander";
 import { CliError, ExitCode } from "../core/errors.js";
-import { runMcp } from "../mcp/run.js";
+import { DEFAULT_HTTP_HOST, runMcp } from "../mcp/run.js";
 import { type GlobalOptions, intArg } from "../options.js";
 import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install.js";
 
 interface McpCommandOptions extends GlobalOptions {
   http?: boolean;
   port: number;
+  host?: string;
   acceptAlpha?: boolean;
 }
 
@@ -34,6 +35,11 @@ export function registerMcpCommand(program: Command): void {
     .command("mcp")
     .description("(alpha) Run the MCP server over stdio (or --http) for AI agents. Requires --accept-alpha.")
     .option("--http", "serve over streamable HTTP instead of stdio")
+    .option(
+      "--host <host>",
+      "interface to bind with --http (default 127.0.0.1; the endpoint is unauthenticated, so binding a wider interface exposes your API key)",
+      DEFAULT_HTTP_HOST,
+    )
     .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
     .addOption(
       new Option("--port <n>", "HTTP port (with --http)")
@@ -46,6 +52,7 @@ export function registerMcpCommand(program: Command): void {
       await runMcp({
         http: opts.http,
         port: opts.port,
+        host: opts.host,
         authInput: {
           apiKey: opts.apiKey,
           apiVersion: opts.apiVersion,

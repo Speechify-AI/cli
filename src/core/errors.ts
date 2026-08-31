@@ -131,24 +131,6 @@ export function exitCodeForStatus(status: number | undefined): number {
   return ExitCode.GENERIC;
 }
 
-/** Build a CliError from a non-2xx fetch Response, reading the API error envelope. */
-export async function apiErrorFromResponse(res: Response): Promise<CliError> {
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    body = undefined;
-  }
-  const envelope = readApiEnvelope(body);
-  return new CliError(envelope.message ?? `Request failed (HTTP ${res.status}).`, {
-    exitCode: exitCodeForStatus(res.status),
-    code: envelope.code,
-    statusCode: res.status,
-    requestId: envelope.requestId,
-    fields: envelope.fields,
-  });
-}
-
 export function normalizeError(err: unknown): NormalizedError {
   if (err instanceof CliError) {
     return {

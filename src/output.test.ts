@@ -119,4 +119,18 @@ describe("renderTable", () => {
     expect(lines[1]).toBe("------  -------------");
     expect(lines[2]).toBe("george  George");
   });
+
+  it("neutralizes control characters in untrusted cells (no injected newline/ANSI)", () => {
+    // A voice display name carrying a newline and an ANSI escape must not break the
+    // row layout or emit terminal control codes into the operator's screen.
+    const ESC = String.fromCharCode(0x1b);
+    const evil = `Ev\nil${ESC}[31mRED`;
+    const table = renderTable(["ID", "NAME"], [["x", evil]]);
+    // One row per source row — the embedded newline didn't split the table.
+    expect(table.split("\n")).toHaveLength(3);
+    // The ESC byte is gone (its printable tail "[31m" is inert without it) and the
+    // newline became a space, so the cell stays on one line.
+    expect(table).not.toContain(ESC);
+    expect(table).toContain("Ev il [31mRED");
+  });
 });

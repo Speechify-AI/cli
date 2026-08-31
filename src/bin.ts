@@ -6,7 +6,7 @@ import { registerAuthCommands } from "./commands/auth.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerSayCommand } from "./commands/say.js";
 import { registerVoicesCommand } from "./commands/voices.js";
-import { NeedsInputError, normalizeError } from "./core/errors.js";
+import { CliError, ExitCode, NeedsInputError, normalizeError } from "./core/errors.js";
 import { emitNeedsInput } from "./output.js";
 import { type OutputMode, outputMode } from "./runtime.js";
 
@@ -47,6 +47,19 @@ function buildProgram(): Command {
 
   // After all commands exist, hang the globals off the whole tree.
   applyGlobalOptions(program);
+
+  // --json and --agent-friendly are contradictory output contracts (bare payload
+  // vs. wrapped envelope). Passing both is a mistake, not a silent precedence
+  // decision — reject it before any command runs.
+  program.hook("preAction", (_thisCommand, actionCommand) => {
+    const opts = actionCommand.optsWithGlobals() as { json?: boolean; agentFriendly?: boolean };
+    if (opts.json && opts.agentFriendly) {
+      throw new CliError("Use either --json or --agent-friendly, not both.", {
+        exitCode: ExitCode.DATA_ERR,
+        code: "conflicting_output",
+      });
+    }
+  });
 
   return program;
 }

@@ -1,7 +1,7 @@
 import { type SpeechifyClient, SpeechifyError } from "@speechify/api";
 import { describe, expect, it } from "vitest";
 import { CliError, ExitCode, normalizeError } from "./errors.js";
-import { filterVoices, getVoice, type VoiceSummary } from "./voices.js";
+import { filterVoices, getVoice, listVoices, type VoiceSummary } from "./voices.js";
 
 const voice = (over: Partial<VoiceSummary>): VoiceSummary => ({
   id: "v",
@@ -45,6 +45,57 @@ describe("filterVoices", () => {
   it("combines filters with AND semantics", () => {
     expect(filterVoices(CATALOG, { locale: "en", gender: "female" }).map((v) => v.id)).toEqual(["kate"]);
     expect(filterVoices(CATALOG, { locale: "fr", gender: "male" })).toHaveLength(0);
+  });
+});
+
+describe("listVoices", () => {
+  /** Fake client whose paginated list yields the given wire voices. */
+  function listClient(wire: unknown[]): SpeechifyClient {
+    return {
+      voices: {
+        list: async () => wire[Symbol.iterator](),
+      },
+    } as unknown as SpeechifyClient;
+  }
+
+  it("flattens each voice's model names", async () => {
+    const voices = await listVoices(
+      listClient([
+        {
+          id: "george",
+          display_name: "George",
+          gender: "male",
+          locale: "en-US",
+          type: "shared",
+          models: [{ name: "simba-english" }, { name: "simba-multilingual" }],
+          tags: ["podcast"],
+        },
+      ]),
+    );
+    expect(voices[0]).toEqual({
+      id: "george",
+      displayName: "George",
+      gender: "male",
+      locale: "en-US",
+      type: "shared",
+      models: ["simba-english", "simba-multilingual"],
+      tags: ["podcast"],
+    });
+  });
+
+  it("degrades a missing/null models array to empty instead of throwing", async () => {
+    // getVoice tolerates this shape; listVoices must too (the review found it crashed
+    // the whole listing on a single voice with null models).
+    const voices = await listVoices(
+      listClient([
+        { id: "a", display_name: "A", gender: "male", locale: "en-US", type: "shared", models: null, tags: null },
+        { id: "b", display_name: "B", gender: "female", locale: "en-GB", type: "shared", models: undefined },
+      ]),
+    );
+    expect(voices.map((v) => ({ id: v.id, models: v.models, tags: v.tags }))).toEqual([
+      { id: "a", models: [], tags: [] },
+      { id: "b", models: [], tags: [] },
+    ]);
   });
 });
 

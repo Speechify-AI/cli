@@ -8,13 +8,15 @@
 // a clear "run login" error (the MCP SDK returns the CliError message as an isError
 // tool result) rather than the tool silently not existing.
 import { writeFile } from "node:fs/promises";
+import { isAbsolute, relative, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { writeStreamToFile } from "../audio/sink.js";
+import { assertPathAvailable, writeStreamToFile } from "../audio/sink.js";
 import { type AuthInput, resolveAuth } from "../auth/session.js";
 import { createClient } from "../core/client.js";
+import { CliError, ExitCode } from "../core/errors.js";
 import { resolveTimeoutMs } from "../core/fetchWithTimeout.js";
 import {
   AUDIO_FORMATS,
@@ -40,10 +42,13 @@ const DOCS_MCP_URL = "https://docs.speechify.ai/_mcp/server";
  * it, and return the text blocks. No API key required.
  */
 async function callDocsSearch(query: string): Promise<string> {
+  // Every round-trip is bounded by the shared HTTP timeout so a half-open or
+  // unresponsive docs server can't hang the tool call forever.
+  const requestOptions = { timeout: resolveTimeoutMs() };
   const client = new Client({ name: "speechify-cli", version: __CLI_VERSION__ });
-  await client.connect(new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL)));
+  await client.connect(new StreamableHTTPClientTransport(new URL(DOCS_MCP_URL)), requestOptions);
   try {
-    const { tools } = await client.listTools();
+    const { tools } = await client.listTools(undefined, requestOptions);
     const tool = tools.find((t) => /search/i.test(t.name)) ?? tools[0];
     if (!tool) throw new Error("The Speechify docs MCP server exposed no tools.");
 
@@ -51,7 +56,11 @@ async function callDocsSearch(query: string): Promise<string> {
     const schema = (tool.inputSchema ?? {}) as { properties?: Record<string, unknown>; required?: string[] };
     const argName = schema.required?.[0] ?? Object.keys(schema.properties ?? {})[0] ?? "query";
 
-    const result = await client.callTool({ name: tool.name, arguments: { [argName]: query } });
+    const result = await client.callTool(
+      { name: tool.name, arguments: { [argName]: query } },
+      undefined,
+      requestOptions,
+    );
     const blocks = (result.content ?? []) as Array<{ type: string; text?: string }>;
     return (
       blocks
@@ -67,6 +76,28 @@ async function callDocsSearch(query: string): Promise<string> {
 export interface ServerOptions {
   /** Per-invocation auth overrides; resolveAuth() applies flag/env/stored precedence. */
   authInput?: AuthInput;
+}
+
+/**
+ * Resolve a tool-supplied `outputPath` to a concrete file, safely. The value comes
+ * from the MCP caller (often a model acting on untrusted text), so it is confined
+ * to the server's working directory and never allowed to overwrite an existing
+ * file: a prompt-injection payload can't write `~/.ssh/authorized_keys`, escape via
+ * `../`, or clobber a file the operator cares about.
+ */
+async function resolveOutputPath(outputPath: string): Promise<string> {
+  const cwd = process.cwd();
+  const resolved = resolve(cwd, outputPath);
+  const rel = relative(cwd, resolved);
+  if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new CliError(
+      `outputPath must be a relative path inside the working directory (${cwd}); "${outputPath}" resolves outside it.`,
+      { exitCode: ExitCode.DATA_ERR, code: "output_path_escapes_cwd" },
+    );
+  }
+  // Never overwrite: a colliding name is refused rather than silently replaced.
+  await assertPathAvailable(resolved);
+  return resolved;
 }
 
 /**
@@ -147,6 +178,9 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
       },
     },
     async ({ input, voiceId, model, audioFormat, language, outputPath }) => {
+      // Settle (and confine) the destination before spending a synthesis on a write
+      // we'd refuse anyway.
+      const target = outputPath ? await resolveOutputPath(outputPath) : undefined;
       const result = await synthesize(await ttsClient(), {
         input,
         voiceId,
@@ -155,13 +189,13 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
         language,
       });
 
-      if (outputPath) {
-        await writeFile(outputPath, result.audio);
+      if (target) {
+        await writeFile(target, result.audio);
         return {
           content: [
             {
               type: "text",
-              text: `Wrote ${result.audio.length} bytes (${result.format}) to ${outputPath}. Billable characters: ${result.billableCharacters}.`,
+              text: `Wrote ${result.audio.length} bytes (${result.format}) to ${target}. Billable characters: ${result.billableCharacters}.`,
             },
           ],
         };
@@ -204,6 +238,7 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
       },
     },
     async ({ input, outputPath, voiceId, model, audioFormat, language }) => {
+      const target = await resolveOutputPath(outputPath);
       const result = await streamSpeech(await ttsClient(), {
         input,
         voiceId,
@@ -213,13 +248,13 @@ export function buildServer({ authInput = {} }: ServerOptions = {}): McpServer {
       });
       const bytes = await writeStreamToFile(
         readStreamChunks(result.body, { stallTimeoutMs: resolveTimeoutMs() }),
-        outputPath,
+        target,
       );
       return {
         content: [
           {
             type: "text",
-            text: `Wrote ${bytes} bytes of ${result.audio.codec} audio to ${outputPath}. The streaming route reports no billable character count.`,
+            text: `Wrote ${bytes} bytes of ${result.audio.codec} audio to ${target}. The streaming route reports no billable character count.`,
           },
         ],
       };

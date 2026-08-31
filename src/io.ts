@@ -2,24 +2,88 @@
 import { readFile } from "node:fs/promises";
 import { CliError, ExitCode } from "./core/errors.js";
 
-export function readStdin(): Promise<string> {
+// How long to wait for the first byte before treating stdin as "no input". Guards
+// against hanging forever on an idle, inherited pipe — the kind an agent or CI
+// harness leaves open but never writes to or closes. Only the FIRST byte is
+// bounded; once data starts flowing we read to EOF untimed, so a slow producer is
+// never truncated. Ten seconds tolerates a producer that computes before printing
+// its first byte (e.g. `( sleep 3; echo hi ) | speechify say`) without leaving a
+// genuinely idle pipe to hang indefinitely.
+export const STDIN_FIRST_BYTE_TIMEOUT_MS = 10_000;
+
+/**
+ * Read all of stdin to EOF as raw bytes. `firstByteTimeoutMs` bounds only the wait
+ * for the FIRST chunk: null means wait forever (a TTY where a human may be typing);
+ * a number resolves `null` if nothing arrives in time (an idle inherited pipe).
+ * Once any data lands we read through to EOF untimed. No encoding is set, so
+ * multibyte characters split across chunks — and genuinely binary bodies — survive
+ * intact.
+ */
+function readStdinRaw(firstByteTimeoutMs: number | null): Promise<Buffer | null> {
   return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("data", (chunk) => {
-      data += chunk;
-    });
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", reject);
+    const { stdin } = process;
+    const chunks: Buffer[] = [];
+    let timer: NodeJS.Timeout | undefined;
+
+    const cleanup = (): void => {
+      if (timer) clearTimeout(timer);
+      stdin.removeListener("data", onData);
+      stdin.removeListener("end", onEnd);
+      stdin.removeListener("error", onError);
+      stdin.pause();
+    };
+    const onData = (chunk: Buffer): void => {
+      if (timer) {
+        clearTimeout(timer); // first byte arrived — now read to EOF, untimed.
+        timer = undefined;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = (): void => {
+      cleanup();
+      resolve(Buffer.concat(chunks));
+    };
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(err);
+    };
+    if (firstByteTimeoutMs !== null) {
+      timer = setTimeout(() => {
+        cleanup();
+        resolve(null);
+      }, firstByteTimeoutMs);
+    }
+
+    stdin.on("data", onData);
+    stdin.on("end", onEnd);
+    stdin.on("error", onError);
+    stdin.resume();
   });
 }
 
-// How long to wait for the first byte before treating an implicit (non-TTY, no
-// explicit `-`) stdin as "no input". Guards against hanging forever on an idle,
-// inherited pipe — the kind an agent or CI harness leaves open but never writes
-// to or closes. A real producer delivers its first byte near-instantly, so this
-// is generous enough not to truncate a genuinely piped input.
-export const STDIN_FIRST_BYTE_TIMEOUT_MS = 2000;
+/** How long to wait for a first byte given whether stdin is a TTY. */
+function firstByteBudget(): number | null {
+  return process.stdin.isTTY ? null : STDIN_FIRST_BYTE_TIMEOUT_MS;
+}
+
+/**
+ * Read all of stdin to EOF as text (UTF-8). A TTY is read untimed (a human may be
+ * typing); a non-TTY (pipe/redirect) is bounded by the first-byte timeout so an
+ * idle inherited pipe can't hang the process forever — on timeout it yields the
+ * empty string and callers surface their own "no input" outcome.
+ */
+export async function readStdin(): Promise<string> {
+  return (await readStdinRaw(firstByteBudget()))?.toString("utf8") ?? "";
+}
+
+/**
+ * Read all of stdin to EOF as raw bytes, preserving a binary body verbatim (for
+ * `api -d -`). Same first-byte bounding as {@link readStdin}; an empty buffer on
+ * timeout.
+ */
+export async function readStdinBytes(): Promise<Buffer> {
+  return (await readStdinRaw(firstByteBudget())) ?? Buffer.alloc(0);
+}
 
 /**
  * Read stdin, but give up if the first byte doesn't arrive within
@@ -27,41 +91,9 @@ export const STDIN_FIRST_BYTE_TIMEOUT_MS = 2000;
  * reading through to EOF (a real producer may stream slowly), so only the initial
  * silence is time-bounded — never a stream that has started flowing.
  */
-export function readStdinWithFirstByteTimeout(firstByteTimeoutMs: number): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    const { stdin } = process;
-    let data = "";
-    stdin.setEncoding("utf8");
-
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      stdin.removeListener("data", onData);
-      stdin.removeListener("end", onEnd);
-      stdin.removeListener("error", onError);
-      stdin.pause();
-    };
-    const onData = (chunk: string): void => {
-      clearTimeout(timer); // first byte arrived — now read to EOF, untimed.
-      data += chunk;
-    };
-    const onEnd = (): void => {
-      cleanup();
-      resolve(data);
-    };
-    const onError = (err: Error): void => {
-      cleanup();
-      reject(err);
-    };
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve(null);
-    }, firstByteTimeoutMs);
-
-    stdin.on("data", onData);
-    stdin.on("end", onEnd);
-    stdin.on("error", onError);
-    stdin.resume();
-  });
+export async function readStdinWithFirstByteTimeout(firstByteTimeoutMs: number): Promise<string | null> {
+  const buf = await readStdinRaw(firstByteTimeoutMs);
+  return buf === null ? null : buf.toString("utf8");
 }
 
 // Resolve text from (in precedence order): --input-file, a positional argument,
@@ -74,7 +106,9 @@ export async function resolveTextInput(positional: string | undefined, inputFile
     return positional;
   }
   if (positional === "-") {
-    // Explicit request to read stdin — block until the writer closes.
+    // Explicit request to read stdin. On a TTY this blocks until the writer closes;
+    // on a non-TTY it's still bounded by the first-byte timeout so an idle inherited
+    // pipe can't hang forever.
     const piped = await readStdin();
     if (piped.trim().length > 0) return piped;
   } else if (!process.stdin.isTTY) {

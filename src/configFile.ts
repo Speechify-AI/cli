@@ -10,6 +10,7 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, hostname, userInfo } from "node:os";
 import { join } from "node:path";
+import { CliError, ExitCode } from "./core/errors.js";
 
 export interface StoredConfig {
   // The credential: a raw Speechify API key (sk_…), sent as `Authorization: Bearer`.
@@ -97,7 +98,12 @@ async function readEncryptedFile(): Promise<string | null> {
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(enc), decipher.final()]).toString("utf8");
   } catch {
-    // Corrupt/tampered or written on a different machine — treat as no creds.
+    // GCM auth failed: the blob is corrupt/tampered, OR the machine-bound key no
+    // longer matches (the hostname or username changed since it was written — see
+    // fileKey). There is no way to recover the plaintext without the original key,
+    // so we treat it as "not authenticated"; the fix is to `speechify login` again,
+    // which rewrites the blob under the current key. The file itself is left in
+    // place rather than deleted, in case the original machine identity returns.
     return null;
   }
 }
@@ -171,14 +177,45 @@ export async function readConfigFile(): Promise<StoredConfig | undefined> {
   return undefined;
 }
 
+/** Whether the keychain still hands back a credential (i.e. it's still usable). */
+function keychainCredentialReadable(entry: KeychainEntry): boolean {
+  try {
+    return entry.getPassword() != null;
+  } catch {
+    // Unreadable (no entry, no backend, or a locked store) — not confirmably present.
+    return false;
+  }
+}
+
 /** Remove the stored config from every backend (keychain, enc file, legacy). Idempotent. */
 export async function clearConfigFile(): Promise<boolean> {
   let removed = false;
+
+  let entry: KeychainEntry | undefined;
   try {
-    if ((await keychainEntry()).deletePassword()) removed = true;
+    entry = await keychainEntry();
   } catch {
-    // No keychain backend / no entry.
+    // No keychain backend available on this platform — nothing to remove there.
   }
+  if (entry) {
+    try {
+      if (entry.deletePassword()) removed = true;
+    } catch (err) {
+      // The delete threw. The dangerous case — the one this guards — is a silent
+      // failure that leaves the key STILL USABLE, so the next command is quietly
+      // authenticated while the user believes they logged out. Confirm by reading
+      // it back: only surface an error when the credential is still readable.
+      // (A no-backend / no-entry / locked-unreadable store leaves nothing usable,
+      // so logout is effectively complete and stays idempotent.)
+      if (keychainCredentialReadable(entry)) {
+        throw new CliError(
+          "Couldn't remove the stored API key from the OS keychain — it is still present. Retry, or remove the 'speechify-cli' entry from your keychain manually.",
+          { exitCode: ExitCode.CONFIG, code: "keychain_delete_failed", cause: err },
+        );
+      }
+    }
+  }
+
   if (await rmIfExists(credentialsFilePath())) removed = true;
   if (await rmIfExists(configFilePath())) removed = true;
   return removed;
