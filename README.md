@@ -10,7 +10,7 @@ Authenticate with an API key, then drive the API from your terminal.
 ## Authentication
 
 The CLI authenticates with a **Speechify API key** (`sk_…`). Get one from the
-[developer console](https://console.speechify.ai). Supply it per-run via
+[developer console](https://platform.speechify.ai). Supply it per-run via
 `--api-key` / `$SPEECHIFY_API_KEY`, or persist it once:
 
 ```bash
