@@ -110,12 +110,8 @@ full `https://…` endpoint is used as-is.
 relay: it speaks MCP over **stdio** to your local AI client (Claude Code, Cursor,
 Claude Desktop, …) and forwards every request, verbatim, to Speechify's hosted MCP
 server at `https://mcp.speechify.ai/mcp`. The CLI defines no tools of its own — the
-hosted server owns the surface, so new capabilities appear with no CLI upgrade.
-
-Today the hosted server exposes:
-
-- **`ask`** — a grounded, cited answer to a natural-language question about Speechify (API, SDKs, docs, demos, code samples).
-- **`search`** — raw ranked source passages for a query, no synthesis.
+hosted server owns the surface, so its tools show up in your client automatically
+and grow with no CLI upgrade.
 
 ```bash
 speechify mcp              # relay to the hosted server over stdio
@@ -123,30 +119,74 @@ speechify mcp --url <url>  # relay to a different endpoint (staging/testing)
 ```
 
 If an API key is available (`speechify login`, `--api-key`, or `$SPEECHIFY_API_KEY`)
-the relay forwards it upstream as `Authorization: Bearer`. It's **optional** — the
-`ask`/`search` tools are public — and is wired so the hosted server can expose
-authenticated, API-backed tools later without a CLI change.
+the relay forwards it upstream as `Authorization: Bearer`. It's **optional** and
+wired so the hosted server can expose authenticated, API-backed tools later without
+a CLI change.
 
 ### Install into a client
 
-`speechify mcp install` writes the relay into a client's MCP config for you:
+`speechify mcp install` writes the relay into a client's MCP config for you — or
+add it by hand. By default no credential is embedded (the relay reads your stored
+API key); `--embed-key` bakes `$SPEECHIFY_API_KEY` into the entry instead, writing
+the key **in plaintext** (file set to `0600`). A config that can't be parsed safely
+(e.g. JSONC with comments) is left untouched — add the block by hand in that case.
 
 ```bash
-speechify mcp install --all                       # every detected client
-speechify mcp install --client claude-code cursor # specific clients
-speechify mcp install --print                     # print the config block, write nothing
-speechify mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechify mcp install --all    # every detected client
+speechify mcp install --print  # print the config block, write nothing
 ```
 
-Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
-By default no credential is embedded — the spawned server reads your stored API
-key. `--embed-key` bakes `$SPEECHIFY_API_KEY` into the entry instead, writing the
-key **in plaintext** into the client's config (the file is set to `0600`); prefer
-the stored keychain credential unless a client can't reach it. An existing config
-that can't be parsed safely (e.g. JSONC with comments) is left untouched.
+<details>
+<summary><b>Claude Code</b></summary>
 
-To wire it up manually instead, the stdio entry looks like this (once the CLI is
-on your `PATH`):
+```bash
+speechify mcp install --client claude-code
+# or, using Claude Code's own CLI:
+claude mcp add speechify -- speechify mcp
+```
+
+Config: `~/.claude.json` (key `mcpServers`). Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+```bash
+speechify mcp install --client cursor
+```
+
+Config: `~/.cursor/mcp.json` (key `mcpServers`). Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+```bash
+speechify mcp install --client claude-desktop
+```
+
+Config (`mcpServers` key):
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+Manual entry:
 
 ```json
 {
@@ -156,8 +196,54 @@ on your `PATH`):
 }
 ```
 
-Run `speechify mcp install --print` to see the exact command for your
-setup — until the CLI is published, it spawns the running binary by absolute path.
+Restart Claude Desktop to load the server.
+</details>
+
+<details>
+<summary><b>Windsurf</b></summary>
+
+```bash
+speechify mcp install --client windsurf
+```
+
+Config: `~/.codeium/windsurf/mcp_config.json` (key `mcpServers`). Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>VS Code</b></summary>
+
+```bash
+speechify mcp install --client vscode
+```
+
+Config: `mcp.json` in your VS Code user directory (key `servers`; each entry needs
+an explicit `"type": "stdio"`):
+- macOS: `~/Library/Application Support/Code/User/mcp.json`
+- Windows: `%APPDATA%\Code\User\mcp.json`
+- Linux: `~/.config/Code/User/mcp.json`
+
+Manual entry:
+
+```json
+{
+  "servers": {
+    "speechify": { "type": "stdio", "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+Run `speechify mcp install --print` to see the exact command for your setup — until
+the CLI is published, it spawns the running binary by absolute path rather than a
+bare `speechify` on your `PATH`.
 
 ## Development
 
