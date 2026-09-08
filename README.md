@@ -4,7 +4,7 @@ The command-line companion to the [Speechify API](https://speechify.ai).
 Authenticate with an API key, then drive the API from your terminal.
 
 > **Status: early.** API-key auth, `say`, `voices list`/`get`, a raw
-> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) server work today. Not
+> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) relay work today. Not
 > yet published to npm — run from source (see [Development](#development)).
 
 ## Authentication
@@ -100,72 +100,150 @@ full `https://…` endpoint is used as-is.
 
 ## MCP server
 
-> **Alpha — expect changes.** The mcp surface is alpha, so `speechify mcp` and
-> `speechify mcp install` require an explicit `--accept-alpha` opt-in and refuse
-> to run without it. The tool implementations behind this command are expected to
-> move to a hosted server, with `speechify mcp` becoming a relay to it. Don't
-> build on the MCP surface in its current form.
+> **No longer alpha.** The old `--accept-alpha` opt-in has been removed —
+> `speechify mcp` now **rejects** that flag with guidance to drop it. If you
+> installed the server with an older CLI, re-run `speechify mcp install` to update
+> the config. The relay's tool surface is defined by the hosted server and grows
+> without a CLI upgrade.
 
-`speechify mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
-server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
-directly. Tools:
-
-- **`search_docs`** — search the public Speechify docs. No auth required.
-- **`list_voices`** / **`get_voice`** — list account voices, or fetch one by id. *(requires an API key)*
-- **`text_to_speech`** — synthesize audio, returned inline or written to a path. *(requires an API key)*
-- **`stream_text_to_speech`** — synthesize long-form audio straight to a file. *(requires an API key)*
-
-The TTS tools that write files confine `outputPath` to a relative path **inside
-the server's working directory** and never overwrite an existing file — a path
-that escapes the directory (absolute, `../…`) or collides with a file is refused.
+`speechify mcp` is a thin [Model Context Protocol](https://modelcontextprotocol.io)
+relay: it speaks MCP over **stdio** to your local AI client (Claude Code, Cursor,
+Claude Desktop, …) and forwards every request, verbatim, to Speechify's hosted MCP
+server at `https://mcp.speechify.ai/mcp`. The CLI defines no tools of its own — the
+hosted server owns the surface, so its tools show up in your client automatically
+and grow with no CLI upgrade.
 
 ```bash
-speechify mcp --accept-alpha                    # serve over stdio (the usual MCP transport)
-speechify mcp --accept-alpha --http --port 3000 # serve streamable HTTP at POST /mcp instead
+speechify mcp              # relay to the hosted server over stdio
+speechify mcp --url <url>  # relay to a different endpoint (staging/testing)
 ```
 
-The HTTP transport binds **`127.0.0.1` only** by default: the endpoint is
-unauthenticated and uses your API key on every call, so it must not be reachable
-off-box. `--host <interface>` can bind a wider interface, but only put your own
-authentication (a reverse proxy, network policy) in front of it first.
-
-All tools are always registered, so they stay discoverable to agents regardless
-of auth state. Auth is resolved **per tool call**, so a server started before
-`speechify login` picks up the key the moment it's stored — no restart. Calling
-an authenticated tool without a key returns a clear "run `speechify login`" error
-instead of the tool not existing.
+If an API key is available (`speechify login`, `--api-key`, or `$SPEECHIFY_API_KEY`)
+the relay forwards it upstream as `Authorization: Bearer`. It's **optional** and
+wired so the hosted server can expose authenticated, API-backed tools later without
+a CLI change.
 
 ### Install into a client
 
-`speechify mcp install` writes the server into a client's MCP config for you:
+`speechify mcp install` writes the relay into a client's MCP config for you — or
+add it by hand. By default no credential is embedded (the relay reads your stored
+API key); `--embed-key` bakes `$SPEECHIFY_API_KEY` into the entry instead, writing
+the key **in plaintext** (file set to `0600`). A config that can't be parsed safely
+(e.g. JSONC with comments) is left untouched — add the block by hand in that case.
 
 ```bash
-speechify mcp install --accept-alpha --all                       # every detected client
-speechify mcp install --accept-alpha --client claude-code cursor # specific clients
-speechify mcp install --accept-alpha --print                     # print the config block, write nothing
-speechify mcp install --accept-alpha --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechify mcp install --all    # every detected client
+speechify mcp install --print  # print the config block, write nothing
 ```
 
-Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
-By default no credential is embedded — the spawned server reads your stored API
-key. `--embed-key` bakes `$SPEECHIFY_API_KEY` into the entry instead, writing the
-key **in plaintext** into the client's config (the file is set to `0600`); prefer
-the stored keychain credential unless a client can't reach it. An existing config
-that can't be parsed safely (e.g. JSONC with comments) is left untouched.
+<details>
+<summary><b>Claude Code</b></summary>
 
-To wire it up manually instead, the stdio entry looks like this (once the CLI is
-on your `PATH`):
+```bash
+speechify mcp install --client claude-code
+# or, using Claude Code's own CLI:
+claude mcp add speechify -- speechify mcp
+```
+
+Config: `~/.claude.json` (key `mcpServers`). Manual entry:
 
 ```json
 {
   "mcpServers": {
-    "speechify": { "command": "speechify", "args": ["mcp", "--accept-alpha"] }
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+```bash
+speechify mcp install --client cursor
+```
+
+Config: `~/.cursor/mcp.json` (key `mcpServers`). Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+```bash
+speechify mcp install --client claude-desktop
+```
+
+Config (`mcpServers` key):
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
   }
 }
 ```
 
-Run `speechify mcp install --accept-alpha --print` to see the exact command for your
-setup — until the CLI is published, it spawns the running binary by absolute path.
+Restart Claude Desktop to load the server.
+</details>
+
+<details>
+<summary><b>Windsurf</b></summary>
+
+```bash
+speechify mcp install --client windsurf
+```
+
+Config: `~/.codeium/windsurf/mcp_config.json` (key `mcpServers`). Manual entry:
+
+```json
+{
+  "mcpServers": {
+    "speechify": { "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>VS Code</b></summary>
+
+```bash
+speechify mcp install --client vscode
+```
+
+Config: `mcp.json` in your VS Code user directory (key `servers`; each entry needs
+an explicit `"type": "stdio"`):
+- macOS: `~/Library/Application Support/Code/User/mcp.json`
+- Windows: `%APPDATA%\Code\User\mcp.json`
+- Linux: `~/.config/Code/User/mcp.json`
+
+Manual entry:
+
+```json
+{
+  "servers": {
+    "speechify": { "type": "stdio", "command": "speechify", "args": ["mcp"] }
+  }
+}
+```
+</details>
+
+Run `speechify mcp install --print` to see the exact command for your setup — until
+the CLI is published, it spawns the running binary by absolute path rather than a
+bare `speechify` on your `PATH`.
 
 ## Development
 
@@ -184,4 +262,5 @@ node dist/bin.js whoami
 `src/auth/session.ts` resolves an API key (flag / env / stored) into a single
 `AuthContext` (the Bearer). `src/core/client.ts` wraps the `@speechify/api` SDK
 for TTS. Commands in `src/commands/` are thin adapters over `src/core/`;
-`src/mcp/` builds the MCP server on top of the same `core/` services.
+`src/mcp/` relays a local stdio MCP client to the hosted Speechify MCP server,
+forwarding the resolved Bearer upstream.

@@ -98,12 +98,12 @@ export function clients(): McpClient[] {
  * npx. (Once published, this can simplify to `npx -y @speechify/cli mcp`.)
  */
 export function cliInvocation(): CliInvocation {
-  // `mcp` is alpha-gated, so the config we write must carry --accept-alpha or the
-  // spawned server would refuse to start. Installing already required the caller
-  // to pass --accept-alpha, so the opt-in is theirs, not implicit.
+  // The mcp surface is no longer alpha, so the config we write must NOT carry
+  // --accept-alpha — the relay now rejects that flag. (Configs written by an older
+  // CLI still carry it and will fail loudly, prompting a re-install.)
   const script = process.argv[1];
-  if (!script) return { command: "speechify", args: ["mcp", "--accept-alpha"] };
-  return { command: process.execPath, args: [path.resolve(script), "mcp", "--accept-alpha"] };
+  if (!script) return { command: "speechify", args: ["mcp"] };
+  return { command: process.execPath, args: [path.resolve(script), "mcp"] };
 }
 
 /** Build the per-client server entry (pure). */

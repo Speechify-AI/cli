@@ -1,79 +1,90 @@
-// `speechify mcp` — run the SpeechifyAI MCP server (stdio by default, or --http) so
-// AI agents can search docs, list voices, and synthesize speech.
-// `speechify mcp install` writes the server into local AI clients' configs.
+// `speechify mcp` — relay the local MCP client to Speechify's hosted MCP server
+// (https://mcp.speechify.ai/mcp) over stdio. The CLI defines no tools of its own;
+// it forwards JSON-RPC verbatim, so the hosted tool surface (today `ask`/`search`)
+// is what clients see. `speechify mcp install` writes the relay into local AI
+// clients' configs.
 //
-// The mcp surface is ALPHA: both `mcp` and `mcp install` refuse to run without an
-// explicit `--accept-alpha` opt-in, and `mcp install` bakes that flag into the
-// spawned-server config it writes (see cliInvocation in mcp-install.ts).
+// The mcp surface is no longer alpha. The old `--accept-alpha` opt-in is now
+// REJECTED with guidance to drop it — a stale installed config that still passes
+// it fails loudly rather than silently ignoring a flag that no longer means
+// anything. `mcp install` no longer bakes the flag in (see mcp-install.ts).
 import { type Command, Option } from "commander";
+import { type AuthInput, resolveAuth } from "../auth/session.js";
 import { CliError, ExitCode } from "../core/errors.js";
-import { DEFAULT_HTTP_HOST, runMcp } from "../mcp/run.js";
-import { type GlobalOptions, intArg } from "../options.js";
+import { DEFAULT_MCP_URL, runMcp } from "../mcp/run.js";
+import type { GlobalOptions } from "../options.js";
 import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install.js";
 
 interface McpCommandOptions extends GlobalOptions {
-  http?: boolean;
-  port: number;
-  host?: string;
+  url: string;
   acceptAlpha?: boolean;
 }
 
 const ACCEPT_ALPHA_FLAG = "--accept-alpha";
-const ACCEPT_ALPHA_DESC = "acknowledge the mcp command is alpha and may change or break without notice";
 
-/** Gate the alpha mcp surface: refuse to run unless the caller opted in. */
-function assertAlphaOptIn(accepted: boolean | undefined): void {
-  if (accepted) return;
+/**
+ * The mcp surface graduated from alpha. `--accept-alpha` is still declared (hidden)
+ * only so we can give a clear error instead of commander's "unknown option": the
+ * flag is no longer accepted, and passing it — including from a client config
+ * installed by an older CLI — fails with instructions to remove it.
+ */
+function rejectAlphaFlag(passed: boolean | undefined): void {
+  if (!passed) return;
   throw new CliError(
-    "`speechify mcp` is alpha and may change or break without notice. Re-run with --accept-alpha to opt in.",
-    { exitCode: ExitCode.CONFIG, code: "alpha_opt_in_required" },
+    "`speechify mcp` is no longer alpha — remove --accept-alpha to use the MCP relay. " +
+      "If it came from a client config, re-run `speechify mcp install` to update it.",
+    { exitCode: ExitCode.CONFIG, code: "alpha_flag_removed" },
   );
+}
+
+/** The hidden, no-op `--accept-alpha` flag, declared so we can reject it clearly. */
+function alphaOption(): Option {
+  return new Option(ACCEPT_ALPHA_FLAG).hideHelp();
+}
+
+/**
+ * Resolve the API key to forward upstream, if one is available. The relay is usable
+ * unauthenticated — the hosted `ask`/`search` tools are public — so a missing key is
+ * not an error here: we simply relay without a bearer. Any other auth failure still
+ * propagates.
+ */
+async function optionalBearer(input: AuthInput): Promise<string | undefined> {
+  try {
+    return (await resolveAuth(input)).bearer;
+  } catch (err) {
+    if (err instanceof CliError && err.code === "not_authenticated") return undefined;
+    throw err;
+  }
 }
 
 export function registerMcpCommand(program: Command): void {
   const mcp = program
     .command("mcp")
-    .description("(alpha) Run the MCP server over stdio (or --http) for AI agents. Requires --accept-alpha.")
-    .option("--http", "serve over streamable HTTP instead of stdio")
-    .option(
-      "--host <host>",
-      "interface to bind with --http (default 127.0.0.1; the endpoint is unauthenticated, so binding a wider interface exposes your API key)",
-      DEFAULT_HTTP_HOST,
-    )
-    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
-    .addOption(
-      new Option("--port <n>", "HTTP port (with --http)")
-        .default(3000)
-        .argParser(intArg("--port", { min: 1, max: 65535 })),
-    )
+    .description("Relay the local MCP client to Speechify's hosted MCP server over stdio, for AI agents.")
+    .option("--url <url>", "upstream MCP endpoint to relay to", DEFAULT_MCP_URL)
+    .addOption(alphaOption())
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as McpCommandOptions;
-      assertAlphaOptIn(opts.acceptAlpha);
-      await runMcp({
-        http: opts.http,
-        port: opts.port,
-        host: opts.host,
-        authInput: {
-          apiKey: opts.apiKey,
-          apiVersion: opts.apiVersion,
-          baseUrl: opts.baseUrl,
-        },
+      rejectAlphaFlag(opts.acceptAlpha);
+      const bearer = await optionalBearer({
+        apiKey: opts.apiKey,
+        apiVersion: opts.apiVersion,
+        baseUrl: opts.baseUrl,
       });
+      await runMcp({ url: opts.url, bearer });
     });
 
   mcp
     .command("install")
-    .description(
-      "(alpha) Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …). Requires --accept-alpha.",
-    )
+    .description("Install the MCP relay into local AI clients (Claude Code, Cursor, Claude Desktop, …).")
     .option("--client <ids...>", `client id(s): ${CLIENT_IDS.join(", ")}`)
     .option("--all", "install into every detected client")
     .option("--print", "print the config block instead of writing it")
     .option("--embed-key", "embed $SPEECHIFY_API_KEY in the client env (default: rely on the stored session)")
-    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
+    .addOption(alphaOption())
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions & McpInstallOptions & { acceptAlpha?: boolean };
-      assertAlphaOptIn(opts.acceptAlpha);
+      rejectAlphaFlag(opts.acceptAlpha);
       await runMcpInstall({
         client: opts.client,
         all: opts.all,
