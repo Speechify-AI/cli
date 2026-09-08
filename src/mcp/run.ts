@@ -1,97 +1,80 @@
-// Transport wiring for the MCP server: stdio (default) or streamable HTTP.
-import http from "node:http";
+// `speechify mcp` runs a thin relay: it speaks MCP over stdio to the local client
+// (Claude Desktop, Cursor, Claude Code, …) and forwards every JSON-RPC message,
+// verbatim, to Speechify's hosted MCP server over streamable HTTP. The CLI defines
+// no tools of its own — the hosted server owns the entire surface (today `ask` and
+// `search`), so new hosted capabilities appear here with no CLI release.
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import type { AuthInput } from "../auth/session.js";
-import { buildServer } from "./server.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 
-/** HTTP mode binds loopback by default: the endpoint is unauthenticated and resolves
- * the operator's API key per call, so it must not be reachable off-box unless the
- * operator explicitly asks for it. */
-export const DEFAULT_HTTP_HOST = "127.0.0.1";
+/** Hosted Speechify MCP server. Overridable via --url for staging/testing. */
+export const DEFAULT_MCP_URL = "https://mcp.speechify.ai/mcp";
 
 export interface McpOptions {
-  http?: boolean;
-  port: number;
-  /** Interface to bind in HTTP mode. Defaults to loopback ({@link DEFAULT_HTTP_HOST}). */
-  host?: string;
-  authInput?: AuthInput;
-}
-
-/** Loopback binds never expose the port off-box; anything else does. */
-function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+  /** Upstream MCP endpoint. Defaults to {@link DEFAULT_MCP_URL}. */
+  url?: string;
+  /**
+   * API key to forward upstream as `Authorization: Bearer`. Optional: the hosted
+   * `ask`/`search` tools are public, so the relay works with no key; a key is passed
+   * through so the hosted server can expose authenticated, API-backed tools later.
+   */
+  bearer?: string;
 }
 
 /**
- * IMPORTANT: never write to stdout here — on the stdio transport, stdout IS the
- * MCP protocol channel. All human-readable logging goes to stderr.
+ * MCP stdio uses stdout as the protocol channel, so every human-readable line —
+ * including errors — must go to stderr, never stdout.
  */
-function logStatus(transport: string): void {
-  process.stderr.write(
-    `SpeechifyAI MCP server (alpha) ready on ${transport}\n` +
-      "Tools: search_docs, list_voices, get_voice, text_to_speech, stream_text_to_speech " +
-      "(everything but search_docs needs a stored API key (`speechify login`) or SPEECHIFY_API_KEY; auth is resolved per call)\n",
-  );
+function report(side: "client" | "upstream", err: unknown): void {
+  process.stderr.write(`SpeechifyAI MCP relay: ${side} error: ${(err as Error)?.message ?? String(err)}\n`);
 }
 
-export async function runMcp(opts: McpOptions): Promise<void> {
-  if (opts.http) {
-    await runHttp(opts.port, opts.host ?? DEFAULT_HTTP_HOST, opts.authInput);
-    return;
-  }
+/**
+ * Wire two transports into a bidirectional JSON-RPC relay: every message each side
+ * emits is forwarded verbatim to the other, and a close (or fatal error) on either
+ * end tears down both. Pure wiring — the caller starts the transports afterwards,
+ * since the Transport contract requires callbacks to be installed before `start()`.
+ */
+export function bridge(local: Transport, remote: Transport): void {
+  let closing = false;
+  const shutdown = () => {
+    if (closing) return;
+    closing = true;
+    void local.close();
+    void remote.close();
+  };
 
-  const server = buildServer({ authInput: opts.authInput });
-  await server.connect(new StdioServerTransport());
-  logStatus("stdio");
-  // The stdio transport keeps the process alive until the client disconnects.
+  // A failed forward is reported, not fatal — the peer may still recover — but a
+  // transport error callback signals the connection is done, so tear down.
+  local.onmessage = (message) => void remote.send(message).catch((err) => report("upstream", err));
+  remote.onmessage = (message) => void local.send(message).catch((err) => report("client", err));
+  local.onclose = shutdown;
+  remote.onclose = shutdown;
+  local.onerror = (err) => {
+    report("client", err);
+    shutdown();
+  };
+  remote.onerror = (err) => {
+    report("upstream", err);
+    shutdown();
+  };
 }
 
-/** Stateless streamable-HTTP mode: a fresh server + transport per request. */
-async function runHttp(port: number, host: string, authInput?: AuthInput): Promise<void> {
-  // DNS-rebinding protection needs the exact Host values the client will send. For a
-  // loopback bind those are host:port and localhost:port; for an explicit external
-  // bind we can't enumerate them, so protection is left to the operator's opt-in.
-  const loopback = isLoopbackHost(host);
-  const allowedHosts = loopback ? [`${host}:${port}`, `localhost:${port}`, `127.0.0.1:${port}`] : undefined;
-
-  const httpServer = http.createServer((req, res) => {
-    if (req.method !== "POST" || (req.url !== "/mcp" && req.url !== "/")) {
-      res.writeHead(405, { Allow: "POST" }).end("Method Not Allowed");
-      return;
-    }
-
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(c as Buffer));
-    req.on("end", async () => {
-      try {
-        const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
-        const server = buildServer({ authInput });
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: undefined,
-          enableDnsRebindingProtection: loopback,
-          ...(allowedHosts ? { allowedHosts } : {}),
-        });
-        res.on("close", () => {
-          void transport.close();
-          void server.close();
-        });
-        await server.connect(transport);
-        await transport.handleRequest(req, res, body);
-      } catch (err) {
-        if (!res.headersSent) res.writeHead(400);
-        res.end(JSON.stringify({ error: String((err as Error)?.message ?? err) }));
-      }
-    });
+export async function runMcp(opts: McpOptions = {}): Promise<void> {
+  const url = opts.url ?? DEFAULT_MCP_URL;
+  const remote = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: opts.bearer ? { headers: { Authorization: `Bearer ${opts.bearer}` } } : undefined,
   });
+  const local = new StdioServerTransport();
 
-  // Bind the chosen interface explicitly — never let Node default to every
-  // interface (0.0.0.0/::), which would put an unauthenticated, key-bearing
-  // endpoint on the LAN.
-  if (!loopback) {
-    process.stderr.write(
-      `WARNING: binding ${host}:${port} exposes an UNAUTHENTICATED MCP endpoint that uses your Speechify API key to anyone who can reach this host. Use ${DEFAULT_HTTP_HOST} unless you have put your own auth in front of it.\n`,
-    );
-  }
-  httpServer.listen(port, host, () => logStatus(`http://${host}:${port}/mcp`));
+  bridge(local, remote);
+
+  // Start upstream first so it is ready before the client's `initialize` arrives.
+  await remote.start();
+  await local.start();
+
+  process.stderr.write(
+    `SpeechifyAI MCP relay (alpha) → ${url} ready on stdio${opts.bearer ? " (authenticated)" : ""}\n`,
+  );
+  // The stdio transport keeps the process alive until the client disconnects.
 }

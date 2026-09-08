@@ -1,20 +1,21 @@
-// `speechify mcp` — run the SpeechifyAI MCP server (stdio by default, or --http) so
-// AI agents can search docs, list voices, and synthesize speech.
-// `speechify mcp install` writes the server into local AI clients' configs.
+// `speechify mcp` — relay the local MCP client to Speechify's hosted MCP server
+// (https://mcp.speechify.ai/mcp) over stdio. The CLI defines no tools of its own;
+// it forwards JSON-RPC verbatim, so the hosted tool surface (today `ask`/`search`)
+// is what clients see. `speechify mcp install` writes the relay into local AI
+// clients' configs.
 //
 // The mcp surface is ALPHA: both `mcp` and `mcp install` refuse to run without an
 // explicit `--accept-alpha` opt-in, and `mcp install` bakes that flag into the
 // spawned-server config it writes (see cliInvocation in mcp-install.ts).
-import { type Command, Option } from "commander";
+import type { Command } from "commander";
+import { type AuthInput, resolveAuth } from "../auth/session.js";
 import { CliError, ExitCode } from "../core/errors.js";
-import { DEFAULT_HTTP_HOST, runMcp } from "../mcp/run.js";
-import { type GlobalOptions, intArg } from "../options.js";
+import { DEFAULT_MCP_URL, runMcp } from "../mcp/run.js";
+import type { GlobalOptions } from "../options.js";
 import { CLIENT_IDS, type McpInstallOptions, runMcpInstall } from "./mcp-install.js";
 
 interface McpCommandOptions extends GlobalOptions {
-  http?: boolean;
-  port: number;
-  host?: string;
+  url: string;
   acceptAlpha?: boolean;
 }
 
@@ -30,41 +31,44 @@ function assertAlphaOptIn(accepted: boolean | undefined): void {
   );
 }
 
+/**
+ * Resolve the API key to forward upstream, if one is available. The relay is usable
+ * unauthenticated — the hosted `ask`/`search` tools are public — so a missing key is
+ * not an error here: we simply relay without a bearer. Any other auth failure still
+ * propagates.
+ */
+async function optionalBearer(input: AuthInput): Promise<string | undefined> {
+  try {
+    return (await resolveAuth(input)).bearer;
+  } catch (err) {
+    if (err instanceof CliError && err.code === "not_authenticated") return undefined;
+    throw err;
+  }
+}
+
 export function registerMcpCommand(program: Command): void {
   const mcp = program
     .command("mcp")
-    .description("(alpha) Run the MCP server over stdio (or --http) for AI agents. Requires --accept-alpha.")
-    .option("--http", "serve over streamable HTTP instead of stdio")
-    .option(
-      "--host <host>",
-      "interface to bind with --http (default 127.0.0.1; the endpoint is unauthenticated, so binding a wider interface exposes your API key)",
-      DEFAULT_HTTP_HOST,
+    .description(
+      "(alpha) Relay the local MCP client to Speechify's hosted MCP server over stdio, for AI agents. Requires --accept-alpha.",
     )
+    .option("--url <url>", "upstream MCP endpoint to relay to", DEFAULT_MCP_URL)
     .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
-    .addOption(
-      new Option("--port <n>", "HTTP port (with --http)")
-        .default(3000)
-        .argParser(intArg("--port", { min: 1, max: 65535 })),
-    )
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as McpCommandOptions;
       assertAlphaOptIn(opts.acceptAlpha);
-      await runMcp({
-        http: opts.http,
-        port: opts.port,
-        host: opts.host,
-        authInput: {
-          apiKey: opts.apiKey,
-          apiVersion: opts.apiVersion,
-          baseUrl: opts.baseUrl,
-        },
+      const bearer = await optionalBearer({
+        apiKey: opts.apiKey,
+        apiVersion: opts.apiVersion,
+        baseUrl: opts.baseUrl,
       });
+      await runMcp({ url: opts.url, bearer });
     });
 
   mcp
     .command("install")
     .description(
-      "(alpha) Install the MCP server into local AI clients (Claude Code, Cursor, Claude Desktop, …). Requires --accept-alpha.",
+      "(alpha) Install the MCP relay into local AI clients (Claude Code, Cursor, Claude Desktop, …). Requires --accept-alpha.",
     )
     .option("--client <ids...>", `client id(s): ${CLIENT_IDS.join(", ")}`)
     .option("--all", "install into every detected client")

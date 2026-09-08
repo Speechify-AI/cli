@@ -4,7 +4,7 @@ The command-line companion to the [Speechify API](https://speechify.ai).
 Authenticate with an API key, then drive the API from your terminal.
 
 > **Status: early.** API-key auth, `say`, `voices list`/`get`, a raw
-> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) server work today. Not
+> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) relay work today. Not
 > yet published to npm — run from source (see [Development](#development)).
 
 ## Authentication
@@ -102,42 +102,33 @@ full `https://…` endpoint is used as-is.
 
 > **Alpha — expect changes.** The mcp surface is alpha, so `speechify mcp` and
 > `speechify mcp install` require an explicit `--accept-alpha` opt-in and refuse
-> to run without it. The tool implementations behind this command are expected to
-> move to a hosted server, with `speechify mcp` becoming a relay to it. Don't
-> build on the MCP surface in its current form.
+> to run without it. The relay's tool surface is defined by the hosted server and
+> will grow. Don't build on it in its current form.
 
-`speechify mcp` runs a [Model Context Protocol](https://modelcontextprotocol.io)
-server so AI clients (Claude Code, Cursor, Claude Desktop, …) can use Speechify
-directly. Tools:
+`speechify mcp` is a thin [Model Context Protocol](https://modelcontextprotocol.io)
+relay: it speaks MCP over **stdio** to your local AI client (Claude Code, Cursor,
+Claude Desktop, …) and forwards every request, verbatim, to Speechify's hosted MCP
+server at `https://mcp.speechify.ai/mcp`. The CLI defines no tools of its own — the
+hosted server owns the surface, so new capabilities appear with no CLI upgrade.
 
-- **`search_docs`** — search the public Speechify docs. No auth required.
-- **`list_voices`** / **`get_voice`** — list account voices, or fetch one by id. *(requires an API key)*
-- **`text_to_speech`** — synthesize audio, returned inline or written to a path. *(requires an API key)*
-- **`stream_text_to_speech`** — synthesize long-form audio straight to a file. *(requires an API key)*
+Today the hosted server exposes:
 
-The TTS tools that write files confine `outputPath` to a relative path **inside
-the server's working directory** and never overwrite an existing file — a path
-that escapes the directory (absolute, `../…`) or collides with a file is refused.
+- **`ask`** — a grounded, cited answer to a natural-language question about Speechify (API, SDKs, docs, demos, code samples).
+- **`search`** — raw ranked source passages for a query, no synthesis.
 
 ```bash
-speechify mcp --accept-alpha                    # serve over stdio (the usual MCP transport)
-speechify mcp --accept-alpha --http --port 3000 # serve streamable HTTP at POST /mcp instead
+speechify mcp --accept-alpha              # relay to the hosted server over stdio
+speechify mcp --accept-alpha --url <url>  # relay to a different endpoint (staging/testing)
 ```
 
-The HTTP transport binds **`127.0.0.1` only** by default: the endpoint is
-unauthenticated and uses your API key on every call, so it must not be reachable
-off-box. `--host <interface>` can bind a wider interface, but only put your own
-authentication (a reverse proxy, network policy) in front of it first.
-
-All tools are always registered, so they stay discoverable to agents regardless
-of auth state. Auth is resolved **per tool call**, so a server started before
-`speechify login` picks up the key the moment it's stored — no restart. Calling
-an authenticated tool without a key returns a clear "run `speechify login`" error
-instead of the tool not existing.
+If an API key is available (`speechify login`, `--api-key`, or `$SPEECHIFY_API_KEY`)
+the relay forwards it upstream as `Authorization: Bearer`. It's **optional** — the
+`ask`/`search` tools are public — and is wired so the hosted server can expose
+authenticated, API-backed tools later without a CLI change.
 
 ### Install into a client
 
-`speechify mcp install` writes the server into a client's MCP config for you:
+`speechify mcp install` writes the relay into a client's MCP config for you:
 
 ```bash
 speechify mcp install --accept-alpha --all                       # every detected client
@@ -184,4 +175,5 @@ node dist/bin.js whoami
 `src/auth/session.ts` resolves an API key (flag / env / stored) into a single
 `AuthContext` (the Bearer). `src/core/client.ts` wraps the `@speechify/api` SDK
 for TTS. Commands in `src/commands/` are thin adapters over `src/core/`;
-`src/mcp/` builds the MCP server on top of the same `core/` services.
+`src/mcp/` relays a local stdio MCP client to the hosted Speechify MCP server,
+forwarding the resolved Bearer upstream.
