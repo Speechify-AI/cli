@@ -4,10 +4,11 @@
 // is what clients see. `speechify mcp install` writes the relay into local AI
 // clients' configs.
 //
-// The mcp surface is ALPHA: both `mcp` and `mcp install` refuse to run without an
-// explicit `--accept-alpha` opt-in, and `mcp install` bakes that flag into the
-// spawned-server config it writes (see cliInvocation in mcp-install.ts).
-import type { Command } from "commander";
+// The mcp surface is no longer alpha. The old `--accept-alpha` opt-in is now
+// REJECTED with guidance to drop it — a stale installed config that still passes
+// it fails loudly rather than silently ignoring a flag that no longer means
+// anything. `mcp install` no longer bakes the flag in (see mcp-install.ts).
+import { type Command, Option } from "commander";
 import { type AuthInput, resolveAuth } from "../auth/session.js";
 import { CliError, ExitCode } from "../core/errors.js";
 import { DEFAULT_MCP_URL, runMcp } from "../mcp/run.js";
@@ -20,15 +21,25 @@ interface McpCommandOptions extends GlobalOptions {
 }
 
 const ACCEPT_ALPHA_FLAG = "--accept-alpha";
-const ACCEPT_ALPHA_DESC = "acknowledge the mcp command is alpha and may change or break without notice";
 
-/** Gate the alpha mcp surface: refuse to run unless the caller opted in. */
-function assertAlphaOptIn(accepted: boolean | undefined): void {
-  if (accepted) return;
+/**
+ * The mcp surface graduated from alpha. `--accept-alpha` is still declared (hidden)
+ * only so we can give a clear error instead of commander's "unknown option": the
+ * flag is no longer accepted, and passing it — including from a client config
+ * installed by an older CLI — fails with instructions to remove it.
+ */
+function rejectAlphaFlag(passed: boolean | undefined): void {
+  if (!passed) return;
   throw new CliError(
-    "`speechify mcp` is alpha and may change or break without notice. Re-run with --accept-alpha to opt in.",
-    { exitCode: ExitCode.CONFIG, code: "alpha_opt_in_required" },
+    "`speechify mcp` is no longer alpha — remove --accept-alpha to use the MCP relay. " +
+      "If it came from a client config, re-run `speechify mcp install` to update it.",
+    { exitCode: ExitCode.CONFIG, code: "alpha_flag_removed" },
   );
+}
+
+/** The hidden, no-op `--accept-alpha` flag, declared so we can reject it clearly. */
+function alphaOption(): Option {
+  return new Option(ACCEPT_ALPHA_FLAG).hideHelp();
 }
 
 /**
@@ -49,14 +60,12 @@ async function optionalBearer(input: AuthInput): Promise<string | undefined> {
 export function registerMcpCommand(program: Command): void {
   const mcp = program
     .command("mcp")
-    .description(
-      "(alpha) Relay the local MCP client to Speechify's hosted MCP server over stdio, for AI agents. Requires --accept-alpha.",
-    )
+    .description("Relay the local MCP client to Speechify's hosted MCP server over stdio, for AI agents.")
     .option("--url <url>", "upstream MCP endpoint to relay to", DEFAULT_MCP_URL)
-    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
+    .addOption(alphaOption())
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as McpCommandOptions;
-      assertAlphaOptIn(opts.acceptAlpha);
+      rejectAlphaFlag(opts.acceptAlpha);
       const bearer = await optionalBearer({
         apiKey: opts.apiKey,
         apiVersion: opts.apiVersion,
@@ -67,17 +76,15 @@ export function registerMcpCommand(program: Command): void {
 
   mcp
     .command("install")
-    .description(
-      "(alpha) Install the MCP relay into local AI clients (Claude Code, Cursor, Claude Desktop, …). Requires --accept-alpha.",
-    )
+    .description("Install the MCP relay into local AI clients (Claude Code, Cursor, Claude Desktop, …).")
     .option("--client <ids...>", `client id(s): ${CLIENT_IDS.join(", ")}`)
     .option("--all", "install into every detected client")
     .option("--print", "print the config block instead of writing it")
     .option("--embed-key", "embed $SPEECHIFY_API_KEY in the client env (default: rely on the stored session)")
-    .option(ACCEPT_ALPHA_FLAG, ACCEPT_ALPHA_DESC)
+    .addOption(alphaOption())
     .action(async (_options: unknown, command: Command) => {
       const opts = command.optsWithGlobals() as GlobalOptions & McpInstallOptions & { acceptAlpha?: boolean };
-      assertAlphaOptIn(opts.acceptAlpha);
+      rejectAlphaFlag(opts.acceptAlpha);
       await runMcpInstall({
         client: opts.client,
         all: opts.all,

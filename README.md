@@ -100,10 +100,11 @@ full `https://…` endpoint is used as-is.
 
 ## MCP server
 
-> **Alpha — expect changes.** The mcp surface is alpha, so `speechify mcp` and
-> `speechify mcp install` require an explicit `--accept-alpha` opt-in and refuse
-> to run without it. The relay's tool surface is defined by the hosted server and
-> will grow. Don't build on it in its current form.
+> **No longer alpha.** The old `--accept-alpha` opt-in has been removed —
+> `speechify mcp` now **rejects** that flag with guidance to drop it. If you
+> installed the server with an older CLI, re-run `speechify mcp install` to update
+> the config. The relay's tool surface is defined by the hosted server and grows
+> without a CLI upgrade.
 
 `speechify mcp` is a thin [Model Context Protocol](https://modelcontextprotocol.io)
 relay: it speaks MCP over **stdio** to your local AI client (Claude Code, Cursor,
@@ -117,8 +118,8 @@ Today the hosted server exposes:
 - **`search`** — raw ranked source passages for a query, no synthesis.
 
 ```bash
-speechify mcp --accept-alpha              # relay to the hosted server over stdio
-speechify mcp --accept-alpha --url <url>  # relay to a different endpoint (staging/testing)
+speechify mcp              # relay to the hosted server over stdio
+speechify mcp --url <url>  # relay to a different endpoint (staging/testing)
 ```
 
 If an API key is available (`speechify login`, `--api-key`, or `$SPEECHIFY_API_KEY`)
@@ -131,10 +132,10 @@ authenticated, API-backed tools later without a CLI change.
 `speechify mcp install` writes the relay into a client's MCP config for you:
 
 ```bash
-speechify mcp install --accept-alpha --all                       # every detected client
-speechify mcp install --accept-alpha --client claude-code cursor # specific clients
-speechify mcp install --accept-alpha --print                     # print the config block, write nothing
-speechify mcp install --accept-alpha --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
+speechify mcp install --all                       # every detected client
+speechify mcp install --client claude-code cursor # specific clients
+speechify mcp install --print                     # print the config block, write nothing
+speechify mcp install --client vscode --embed-key # bake $SPEECHIFY_API_KEY into the entry
 ```
 
 Supported ids: `claude-code`, `cursor`, `claude-desktop`, `windsurf`, `vscode`.
@@ -150,12 +151,12 @@ on your `PATH`):
 ```json
 {
   "mcpServers": {
-    "speechify": { "command": "speechify", "args": ["mcp", "--accept-alpha"] }
+    "speechify": { "command": "speechify", "args": ["mcp"] }
   }
 }
 ```
 
-Run `speechify mcp install --accept-alpha --print` to see the exact command for your
+Run `speechify mcp install --print` to see the exact command for your
 setup — until the CLI is published, it spawns the running binary by absolute path.
 
 ## Development
