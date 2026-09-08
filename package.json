@@ -41,6 +41,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "docs:generate": "WRITE_DOCS=1 vitest run src/docs/reference.test.ts",
     "format": "biome format --write .",
     "lint": "biome check .",
     "prepublishOnly": "pnpm build"

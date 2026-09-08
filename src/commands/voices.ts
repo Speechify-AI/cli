@@ -103,7 +103,8 @@ export function registerVoicesCommand(program: Command): void {
     });
 
   voices
-    .command("get [voice-id]")
+    .command("get")
+    .argument("[voice-id]", "id of the voice to show (see `speechify voices list`); omit to be prompted")
     .description("Show one voice: its models, locales, tags, and preview URLs.")
     .addHelpText("after", "\nExample:\n  $ speechify voices get george\n  $ speechify voices get george --json")
     .action(async (voiceIdArg: string | undefined, _options: unknown, command: Command) => {

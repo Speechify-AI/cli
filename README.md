@@ -245,22 +245,37 @@ Run `speechify mcp install --print` to see the exact command for your setup — 
 the CLI is published, it spawns the running binary by absolute path rather than a
 bare `speechify` on your `PATH`.
 
+## Reference
+
+Full, agent-discoverable docs cover every command and flag. They're **generated
+from the CLI itself**, so they can't drift from what the binary accepts:
+
+- [`llms.txt`](llms.txt) — the [llms.txt](https://llmstxt.org)-standard index.
+- [`llms-full.txt`](llms-full.txt) — every command and flag in one file.
+- [`docs/`](docs/) — one page per command, plus [global options](docs/global-options.md).
+
+Regenerate after changing any command or flag with `pnpm docs:generate`; a test in
+the suite fails if the checked-in copies are out of date.
+
 ## Development
 
 ```bash
 pnpm install
-pnpm build       # tsup → dist/bin.js (executable, shebang'd)
+pnpm build         # tsup → dist/bin.js (executable, shebang'd)
 pnpm typecheck
-pnpm test
-pnpm lint        # biome
+pnpm test          # includes the docs drift guard
+pnpm lint          # biome
+pnpm docs:generate # rewrite llms.txt, llms-full.txt and docs/ from the CLI
 
 node dist/bin.js whoami
 ```
 
 ## Architecture
 
-`src/auth/session.ts` resolves an API key (flag / env / stored) into a single
-`AuthContext` (the Bearer). `src/core/client.ts` wraps the `@speechify/api` SDK
-for TTS. Commands in `src/commands/` are thin adapters over `src/core/`;
-`src/mcp/` relays a local stdio MCP client to the hosted Speechify MCP server,
-forwarding the resolved Bearer upstream.
+`src/program.ts` assembles the commander command tree (side-effect-free) and
+`src/bin.ts` runs it. `src/auth/session.ts` resolves an API key (flag / env /
+stored) into a single `AuthContext` (the Bearer). `src/core/client.ts` wraps the
+`@speechify/api` SDK for TTS. Commands in `src/commands/` are thin adapters over
+`src/core/`; `src/mcp/` relays a local stdio MCP client to the hosted Speechify MCP
+server, forwarding the resolved Bearer upstream. `src/docs/reference.ts` walks the
+command tree to generate the reference docs.
