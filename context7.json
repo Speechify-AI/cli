@@ -1,0 +1,24 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "SpeechifyAI CLI",
+  "description": "Command-line companion to the Speechify API — authenticate with an API key, synthesize speech, manage voices, and run an MCP server from your terminal.",
+  "url": "https://context7.com/speechify-ai/cli",
+  "public_key": "pk_APO3PeuTVigMZ5P69udhE",
+  "folders": [],
+  "excludeFolders": [
+    "dist",
+    "node_modules",
+    "verify",
+    ".agents",
+    ".claude",
+    ".github"
+  ],
+  "excludeFiles": [
+    "pnpm-lock.yaml"
+  ],
+  "rules": [
+    "Authenticate with a Speechify API key (sk_…); precedence per run is --api-key, then $SPEECHIFY_API_KEY, then the stored key.",
+    "The binary is `speechify`; core commands are `login`, `say`, `voices list`/`get`, `api`, and `mcp`.",
+    "Prefer `speechify say` for one-off synthesis and `speechify api` for raw API passthrough."
+  ]
+}
