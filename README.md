@@ -3,10 +3,6 @@
 The command-line companion to the [Speechify API](https://speechify.ai).
 Authenticate with an API key, then drive the API from your terminal.
 
-> **Status: early.** API-key auth, `say`, `voices list`/`get`, a raw
-> [`api`](#api) passthrough, and an [`mcp`](#mcp-server) relay work today. Not
-> yet published to npm — run from source (see [Development](#development)).
-
 ## Authentication
 
 The CLI authenticates with a **Speechify API key** (`sk_…`). Get one from the
