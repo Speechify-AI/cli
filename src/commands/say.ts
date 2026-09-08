@@ -125,7 +125,8 @@ function assertSayFlags(opts: SayOptions, formatCameFromCli: boolean): void {
 
 export function registerSayCommand(program: Command): void {
   program
-    .command("say [text]")
+    .command("say")
+    .argument("[text]", "text (or SSML) to synthesize; omit to read from --input-file or stdin")
     .description("Synthesize speech from text and save (or play) the audio.")
     .option("-v, --voice <id>", "voice id (see `speechify voices list`)", DEFAULT_VOICE)
     .addOption(new Option("--model <model>", "synthesis model").choices([...SPEECH_MODELS]))

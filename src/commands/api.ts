@@ -139,7 +139,8 @@ export async function buildApiRequest(auth: AuthContext, endpoint: string, opts:
 
 export function registerApiCommand(program: Command): void {
   program
-    .command("api <endpoint>")
+    .command("api")
+    .argument("<endpoint>", "API path (e.g. v1/voices, leading slash optional) or a full https:// URL")
     .description("Authenticated raw request to any API endpoint (gh-api style).")
     .option("-X, --method <method>", "HTTP method (default GET, or POST when a body is present)")
     .option(

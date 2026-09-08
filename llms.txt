@@ -1,0 +1,22 @@
+# Speechify CLI
+
+> SpeechifyAI command-line companion for the Speechify API.
+
+`speechify` is the command-line companion to the Speechify API — authenticate with
+an API key, synthesize speech, manage voices, run raw API calls, and relay a local
+MCP client to Speechify's hosted MCP server.
+
+## Commands
+
+- [speechify login](docs/login.md): Validate a Speechify API key and store it for later commands.
+- [speechify logout](docs/logout.md): Forget the stored API key.
+- [speechify whoami](docs/whoami.md): Show how you're authenticated (flag / env / stored API key).
+- [speechify say](docs/say.md): Synthesize speech from text and save (or play) the audio.
+- [speechify voices](docs/voices.md): Voice catalog.
+- [speechify api](docs/api.md): Authenticated raw request to any API endpoint (gh-api style).
+- [speechify mcp](docs/mcp.md): Relay the local MCP client to Speechify's hosted MCP server over stdio, for AI agents.
+
+## Reference
+
+- [Global options](docs/global-options.md): flags available on every command.
+- [Full reference](llms-full.txt): every command and flag in one file.
