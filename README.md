@@ -266,6 +266,16 @@ pnpm docs:generate # rewrite llms.txt, llms-full.txt and docs/ from the CLI
 node dist/bin.js whoami
 ```
 
+## Releasing
+
+Publishing is tokenless. There are no repository or organization secrets in the release path, and nothing in it is tied to a person.
+
+- [`release-please.yml`](.github/workflows/release-please.yml) runs on every push to `main`. `feat:` and `fix:` commits accumulate into a release PR; merging that PR tags the release and the `publish` job runs `npm publish --provenance`.
+- Authentication is npm [trusted publishing](https://docs.npmjs.com/trusted-publishers) over GitHub Actions OIDC (`id-token: write`). The trust is configured on npmjs.com for `@speechify/cli` and points at this repository and the `release-please.yml` workflow. Viewing or changing it needs an npm maintainer of the package (package Settings, Trusted Publisher).
+- npm allows one trusted publisher per package, so [`manual-publish.yml`](.github/workflows/manual-publish.yml) can only publish if that trust is re-pointed at it first. Dispatched with `dry_run` on (the default) it checks out a tag, builds, asserts the version and packs without contacting the registry, which is the way to prove the release path still works.
+
+Maintainer contact: `devrel@speechify.com`.
+
 ## Architecture
 
 `src/program.ts` assembles the commander command tree (side-effect-free) and
