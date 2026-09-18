@@ -16,6 +16,10 @@ on:
         description: "Version package.json MUST declare"
         required: true
         default: "0.1.0"
+      dry_run:
+        description: "Build, assert and pack the ref without contacting the registry"
+        type: boolean
+        default: true
 
 jobs:
   publish:
@@ -84,5 +88,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build
         run: pnpm build
+      - name: Pack only (dry run)
+        if: ${{ inputs.dry_run }}
+        run: npm publish --dry-run --access public
       - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
         run: npm publish --provenance --access public
