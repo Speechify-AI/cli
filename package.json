@@ -47,7 +47,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@napi-rs/keyring": "1.3.0",
     "@speechify/api": "4.0.1",
     "@vercel/detect-agent": "1.2.3",
